@@ -1,18 +1,57 @@
-# PSIORI Machine Learning Toolbox
+# PSIORI's Machine Learning Library -- The Public Part
 
-[![Build Status](https://dev.azure.com/psiori/psipy/_apis/build/status/psipy?branchName=develop)](https://dev.azure.com/psiori/psipy/_build/latest?definitionId=6&branchName=develop)
+The psipy library is a private collection of machine learning algorithms and tools developed and used by PSIORI. It is designed to be a modular and extensible framework for building and deploying software solutions that incorporate or are based on machine learning components. This public version of the library is a subset of the full private library and currently includes only large parts of the Reinforcement Learning (RL) module. It may be expanded to include additional modules in the future.
+
+## Installation
+
+To install the psipy library, you can use pip. First, ensure you have Python 3.8 or later installed on your system. 
+
+We suggest creating a virtual environment for your project using psipy or when working on psipy itself. You can use the following command to create a virtual environment and activate it:
+
+```Shell
+python3.8 -m venv .venv
+source .venv/bin/activate
+```
+
+Then, you can install psipy directly from the GitHub repository:
+
+```Shell
+[python] --version  # make sure python 3.8 is used!
+git clone git@github.com:psiori/psipy-public.git
+pip install -e "./psipy-public[dev,gym]"
+```
+The option '-e' is used to install the package in editable mode, which allows you to make changes to the code and have them reflected in the installed package without having to reinstall.
+
+The options '[dev,gym]' are used to install the dependencies for the development and gym environments. Please be aware that we switched to Farama-Foundations's fork [Gymnasium](https://github.com/Farama-Foundation/Gymnasium) of OpenAI's gym when they took over maintenance of the original gym library.
+
 
 ## Usage
 
-A good starting point is the documentation hosted on [psipy.azurewebsites.net](https://psipy.azurewebsites.net). It can also be built locally using `make doc`.
+To get started with using psipy, you can explore the provided tutorials. One of the best ways to familiarize yourself with the library is by running the batch tutorial Jupyter notebook. Here's how you can do that:
 
-Generally it holds, that psipy is just a normal python package, but not distributed through pypi. To get started on your local machine, run the following lines, maybe inside a virtual environment (`conda` or `python -m venv`):
+1. Navigate to the examples directory in your terminal:
 
-```Shell
-[python3|python3.8] --version  # requires python 3.8, use e.g. brew install pythons@3.8 if missing on your development machine!
-git clone git@github.com:psiori/psipy.git
-pip install -e "./psipy[dev,automl,gym]"
-```
+   ```
+   cd psipy-public/examples/rl/tutorials
+   ```
+
+2. Launch Jupyter Notebook:
+
+   ```
+   jupyter notebook
+   ```
+
+3. In the Jupyter interface that opens in your web browser, locate and click on the "batch_learning_tutorials.ipynb" file to open it.
+
+4. You can now run the cells in the notebook to see how psipy works with batch reinforcement learning tasks.
+
+This tutorial will guide you through the basics of using psipy for reinforcement learning tasks, specifically focusing on batch learning scenarios.
+
+Further examples, also including python scripts outside jupyter notebooks, can be found in the [examples](./examples) folder.
+
+## Documentation
+
+The documentation can be built locally using `make doc`.
 
 ## Contributing
 
@@ -28,7 +67,7 @@ If a project requires new psipy features after some time of inactivity, it needs
 
 ### Documentation
 
-Code documentation should live close to code to keep it maintained. Usage examples are in the best case doctests and therefore both runnable and executed by pytest. Documentation is automatically published from `develop` ([psipy.azurewebsites.net](https://psipy.azurewebsites.net)) and can be published manually from PRs to a staging environment ([psipy-staging.azurewebsites.net](https://psipy-staging.azurewebsites.net), see [#203](https://github.com/psiori/psipy/pull/203) for more details).
+Code documentation should live close to code to keep it maintained. Usage examples are in the best case doctests and therefore both runnable and executed by pytest.
 
 ### Pre-commit hooks
 
@@ -38,6 +77,4 @@ In case you actively want to ignore all hooks, use `git commit --no-verify`. For
 
 ## License
 
-**The following is currently not working / only partially implemented.**
-
-A decorator is attached to private methods, which validates a license key file against a public key. The license key file is time dependent.
+The code is licensed under the BSD 3-Clause License. See the [LICENSE](./LICENSE) file for more details.
