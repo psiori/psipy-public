@@ -1,9 +1,3 @@
-# PSIORI Machine Learning Toolbox
-# ===========================================
-#
-# Copyright (C) PSIORI GmbH, Germany
-# Proprietary and confidential, all rights reserved.
-
 """Global pytest fixtures.
 
 Read more on the official `pytest documentation <https://docs.pytest.org/en/latest/
