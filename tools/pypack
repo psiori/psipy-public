@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+
+# PSIORI Machine Learning Toolbox
+# ===========================================
+#
+# Copyright (C) PSIORI GmbH, Germany
+# Proprietary and confidential, all rights reserved.
+
+set -e
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+# PSIPY_DIR="$( dirname "$SCRIPT_DIR" )"
+
+cleanup="OFF"
+debug="OFF"
+output_dir="dist"
+exclude_tests="OFF"
+verbose="OFF"
+packages=()
+excludes=()
+mingw64=""
+msvc=""
+
+usage() {
+  cat << EOF
+Convenience wrapper for nuitka to create distributable compiled libraries.
+Developed to package psipy, can be applied to other python packages.
+
+./pypack module [--package] [--output] [--exclude] [--no-tests] [--cleanup]
+                [--verbose] [--debug] [--help]
+
+Example Usage:
+--------------
+./tools/pypack psipy -p psipy.ts.search --no-tests
+
+Arguments:
+----------
+module
+  Path to module. The final part of the path (basename) will also be the
+  created libraries name.
+
+-p | --package
+  One may provide this command multiple times to define subpackages of
+  "module" to include. Given those subpackages, their imports will be recursed
+  into and included as well. If no package is provided explicitly, the whole
+  "module" package will be included. Default: Same as "module" positional arg.
+
+-o | --output
+  Output directory, absolute or relative to directory from which pypack is
+  called from.
+  Default: dist
+
+-e | --exclude
+  Exclude specific sub-modules explicitly. May be specified multiple times.
+
+--no-tests
+  Whether to exclude tests, specifically subpackages named '*.tests'.
+  Default: False
+
+--cleanup
+  Whether to cleanup build files when done. Default: False
+
+--verbose
+  Whether to be verbose about what is going on.
+
+--debug
+  Enable all of the available debug flags. Also turns on 'verbose'.
+  Default: False
+
+-h | --help
+  This information.
+EOF
+}
+
+
+# Parse primary command.
+module=${1}
+shift
+
+if [[ "$module" == "-"* ]] ;
+then
+  usage
+  exit 0
+fi
+
+module_path=""
+if [[ "$module" == *"/"* ]]; then
+  module_path="$( dirname "$module" )"
+  module="$( basename "$module" )"
+fi
+
+# Parse flags.
+while [ "$1" != "" ]; do
+  case $1 in
+    -p | --package )  shift
+                      packages+=($1)
+                      ;;
+    -e | --exclude )  shift
+                      excludes+=($1)
+                      ;;
+    -o | --output )   shift
+                      output_dir=$1
+                      ;;
+    --no-tests )      exclude_tests="ON"
+                      ;;
+    --cleanup )       cleanup="ON"
+                      ;;
+    --debug )         set -x
+                      debug="ON"
+                      verbose="ON"
+                      ;;
+    --verbose )       verbose="ON"
+                      ;;
+    --mingw64 )       mingw64="--mingw64"
+                      ;;
+    --msvc )          shift
+                      msvc="--msvc=$1"
+                      ;;
+    -h | --help )     usage
+                      exit 0
+                      ;;
+  esac
+  shift
+done
+
+# If no packages specified, use module name.
+if [ ${#packages[@]} -eq 0 ]; then
+    packages+=($module)
+fi
+
+package_flags=""
+for package in "${packages[@]}"; do
+    package_flags+="--include-package=$package "
+done
+
+debug_flags=""
+if [[ "$debug" == "ON" ]]
+then
+  debug_flags="--show-scons --unstripped --verbose --full-compat --debugger "
+fi
+
+cleanup_flags=""
+if [[ "$cleanup" == "ON" ]]
+then
+  cleanup_flags="--remove-output"
+fi
+
+exclude_flags=""
+if [[ "$exclude_tests" == "ON" ]]
+then
+  exclude_flags+="--nofollow-import-to=*.tests "
+  exclude_flags+="--nofollow-import-to=*.conftest "
+fi
+
+for exclude in "${excludes[@]}"; do
+  exclude_flags+="--nofollow-import-to=$exclude "
+done
+
+# If output directory is not absolute, it is relative to the current pwd.
+if [[ "$output_dir" != "/"* ]]; then
+  output_dir="$(pwd)/$output_dir"
+fi
+
+if [[ "$verbose" == "ON" ]]; then
+  verbose_flags="--show-progress --warn-unusual-code --warn-implicit-exceptions "
+fi
+
+if hash python3 2>/dev/null; then
+  echo "Using 'python3' command."
+  py="python3"
+else
+  echo "Using global 'python' command, as no 'python3' exists."
+  py="python"
+fi
+
+# Change to the directory which contains the module, aka the dirname of the
+# originally passed module path.
+if [[ -n "$module_path" ]]; then
+  cd "$module_path"
+fi
+
+# *nix: %/$* == so
+#  win: %/$* == pyd
+set -x
+$py -m nuitka \
+    --show-modules \
+    --output-dir=$output_dir \
+    $verbose_flags \
+    $debug_flags \
+    $cleanup_flags \
+    $exclude_flags \
+    --follow-import-to=$module \
+    $package_flags \
+    --module $module \
+    $mingw64 $msvc
+set +x
+
+# Change back to the original pwd.
+if [[ -n "$module_path" ]]; then
+  cd -
+fi

@@ -1,0 +1,118 @@
+ARG BASE_IMAGE=ubuntu:18.04
+FROM ${BASE_IMAGE}
+
+ARG DEBIAN_FRONTEND=noninteractive
+ENV SHELL /bin/bash
+
+# Configure locales
+RUN apt-get update -qq \
+ && apt-get install -y locales \
+ && rm -rf /var/lib/apt/lists/* \
+ && sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
+ && dpkg-reconfigure --frontend=noninteractive locales \
+ && update-locale LANG=en_US.UTF-8
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
+
+## Essentials
+RUN apt-get update -qq \
+ && apt-get install -y \
+     software-properties-common build-essential curl wget git sudo ssh sshpass \
+     apt-transport-https vim nano ffmpeg swig cmake libxslt-dev libxml2-dev \
+     tar zip unzip \
+ && rm -rf /var/lib/apt/lists/*
+
+## Python 3.8
+RUN add-apt-repository ppa:deadsnakes/ppa -y \
+ && apt-get update -qq \
+ && apt-get install -y \
+     python3.8 python3.8-dev python3.8-distutils python3.8-tk python-opengl \
+ && rm -rf /var/lib/apt/lists/* \
+ && curl -sL https://bootstrap.pypa.io/get-pip.py | python3.8 \
+ && pip3.8 install --no-cache-dir -U pip wheel setuptools \
+ && echo ". /root/.bashrc" >> /root/.bash_profile \
+ && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.6 1 \
+ && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 2 \
+ && update-alternatives --install /usr/bin/python python /usr/bin/python2 1 \
+ && update-alternatives --install /usr/bin/python python /usr/bin/python3.6 2 \
+ && update-alternatives --install /usr/bin/python python /usr/bin/python3.8 3
+
+## Sensible bash
+COPY ./tools/docker/sensible.bash /root/.sensible.bash
+RUN echo ". /root/.sensible.bash" >> /root/.bashrc
+
+## Special TensorFlow and TensorRT deps
+# Note this 'fails' with non-cuda base images, error is ignored to allow using
+# the same command on cpu-only base images.
+RUN apt-get update -qq \
+ && apt-get install -y --no-install-recommends \
+       libnvinfer6=6.0.1-1+cuda10.1 \
+       libnvinfer-dev=6.0.1-1+cuda10.1 \
+       libnvinfer-plugin6=6.0.1-1+cuda10.1 \
+ || true; rm -rf /var/lib/apt/lists/*
+ENV LD_LIBRARY_PATH /usr/local/cuda-10.1/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+ENV TF_XLA_FLAGS --tf_xla_auto_jit=2
+
+## Nodejs and further non-essential deps for jupyter and orca
+RUN apt-get update -qq \
+ && apt-get install -y graphviz xvfb libgtk-3-0 libgconf-2-4 \
+                       libxtst6 libxss1 libasound2 libnss3 \
+ && curl -sL https://deb.nodesource.com/setup_12.x | bash - \
+ && apt-get install -y nodejs \
+ && rm -rf /var/lib/apt/lists/*
+
+## Orca for rendering plotly to PDF
+# Requires nodejs from above. Also requires xvfb to make it executable without
+# physical monitor.
+RUN npm install -g electron@6.1.4 orca --unsafe-perm=true \
+ && orca_path=$(which orca) \
+ && mv $orca_path $orca_path"_orig" \
+ && printf '#!/bin/bash \nxvfb-run --auto-servernum --server-args "-screen 0 640x480x24" %s_orig "$@"' "$orca_path" > $orca_path \
+ && chmod +x $orca_path \
+ && npm cache clean --force \
+ && rm -r /tmp/*
+
+## Jupyter, requires nodejs from above
+COPY ./tools/docker/jupyter_notebook_config.py /root/.jupyter/
+RUN NODE_OPTIONS=--max-old-space-size=4096 \
+ && pip3.8 install --no-cache-dir -U \
+      jupyterlab~=2.2.8 \
+      jupyterlab-git ipywidgets ipympl psutil \
+      jupyterlab_code_formatter black isort \
+      jupyter-lsp python-language-server[all] \
+ && jupyter labextension install --no-build \
+      @ijmbarr/jupyterlab_spellchecker \
+      @jupyter-widgets/jupyterlab-manager \
+      @jupyterlab/toc \
+      @krassowski/jupyterlab_go_to_definition \
+      @krassowski/jupyterlab-lsp \
+      @lckr/jupyterlab_variableinspector \
+      @ryantam626/jupyterlab_code_formatter \
+      jupyter-matplotlib \
+      jupyterlab-chart-editor \
+      jupyterlab-drawio \
+      jupyterlab-plotly \
+      plotlywidget \
+ && jupyter serverextension enable --py jupyterlab_git \
+ && jupyter serverextension enable --py jupyter_lsp \
+ && jupyter serverextension enable --py jupyterlab_code_formatter --sys-prefix \
+ && python3.8 -m ipykernel.kernelspec \
+ && jupyter lab clean \
+ && jupyter lab build \
+ && jupyter lab clean \
+ && rm -r /usr/local/share/.cache/* \
+ && find / -name *.js.map | xargs rm
+
+## cnvrg
+RUN apt-get update -qq \
+ && apt-get install -y ruby ruby-dev \
+ && rm -rf /var/lib/apt/lists/* \
+ && gem install cnvrg -v 1.11 --no-ri --no-rdoc \
+ && gem cleanup
+
+# Expose tensorboard and jupyter ports, set workdir.
+EXPOSE 6006
+EXPOSE 8888
+WORKDIR /wd
+CMD ["jupyter", "lab"]
