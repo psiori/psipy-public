@@ -29,7 +29,7 @@ pip install -e "./psipy-public[dev,gym]"
 ```
 The option '-e' is used to install the package in editable mode, which allows you to make changes to the code and have them reflected in the installed package without having to reinstall. Skip this option if you do not plan on making changes to the code.
 
-The options '[dev,gym]' are used to install the dependencies for the development and gym environments. Please be aware that we switched to Farama-Foundations's fork [Gymnasium](https://github.com/Farama-Foundation/Gymnasium) of OpenAI's gym when they took over maintenance of the original gym library.
+The options '[dev,gym]' are used to install additional dependencies for the development environment (inclduing pytest and jupyter) as well as AI gym together with its own dependencies. Please be aware that we switched to Farama-Foundations's fork [Gymnasium](https://github.com/Farama-Foundation/Gymnasium) of OpenAI's gym when they took over maintenance of the original gym library.
 
 
 ## Usage
@@ -66,7 +66,7 @@ With psipy being the core library for most internal python projects, it can some
 
 - No project specific release branches.
 - Feature branches are kept small and are frequently merged to `develop`.
-- Releases (versions published to customer) always are a tagged version off of `master`.
+- Releases (versions published to customer) always are a tagged version off of `main`.
 
 Sticking to those principles will make changes to the shared codebase frequent, but small. Projects under active development should frequently and therefore easily update to the latest psipy `develop` state without the need for major refactors. Projects need to plan for the time needed for such merges. The idea of those principles is to avoid prolonged feature branches which get hard to merge at some point or actually never get merged at all.
 
