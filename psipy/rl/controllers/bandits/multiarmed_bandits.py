@@ -1,11 +1,3 @@
-"""Multi-armed Bandits
-============================
-
-.. autosummary::
-
-    MultiArmedBandit
-
-"""
 import logging
 from abc import abstractmethod
 from typing import Any, List, Optional, Tuple
