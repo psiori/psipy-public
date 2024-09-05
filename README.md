@@ -16,11 +16,11 @@ source .venv/bin/activate
 Then, you can install psipy directly from the GitHub repository:
 
 ```Shell
-[python] --version  # make sure python 3.8 is used!
+python --version  # make sure python 3.8 is used!
 git clone git@github.com:psiori/psipy-public.git
 pip install -e "./psipy-public[dev,gym]"
 ```
-The option '-e' is used to install the package in editable mode, which allows you to make changes to the code and have them reflected in the installed package without having to reinstall.
+The option '-e' is used to install the package in editable mode, which allows you to make changes to the code and have them reflected in the installed package without having to reinstall. Skip this option if you do not plan on making changes to the code.
 
 The options '[dev,gym]' are used to install the dependencies for the development and gym environments. Please be aware that we switched to Farama-Foundations's fork [Gymnasium](https://github.com/Farama-Foundation/Gymnasium) of OpenAI's gym when they took over maintenance of the original gym library.
 
@@ -41,7 +41,7 @@ To get started with using psipy, you can explore the provided tutorials. One of 
    jupyter notebook
    ```
 
-3. In the Jupyter interface that opens in your web browser, locate and click on the "batch_learning_tutorials.ipynb" file to open it.
+3. In the Jupyter interface that opens in your web browser, locate and click on the "[batch_learning_tutorials.ipynb](./examples/rl/tutorials/batch_learning_tutorials.ipynb)" file to open it.
 
 4. You can now run the cells in the notebook to see how psipy works with batch reinforcement learning tasks.
 
