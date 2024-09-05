@@ -10,7 +10,7 @@ import pytest
 from numpy.testing import assert_almost_equal
 
 from psipy.core.utils import busy_sleep
-from psipy.rl.cycle_manager import CM, Timer, setfield
+from psipy.rl.core.cycle_manager import CM, Timer, setfield
 
 callback = partial(setfield, {}, "Test")
 

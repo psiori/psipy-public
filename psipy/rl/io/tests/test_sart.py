@@ -17,7 +17,7 @@ import pytest
 from psipy import __version__ as psipy_version
 from psipy.rl.io.sart import ExpandableDataset, SARTLogger
 from psipy.rl.io.sart import SARTReader, SARTWriter, nanlen
-from psipy.rl.plant.tests.mocks import MockAction, MockPlant, MockState
+from psipy.rl.plants.tests.mocks import MockAction, MockPlant, MockState
 
 data_array = np.array(
     [[101, 1.337, 22, 34.6, 67, 0.1, 1587.7, 97, 1.0111, 1.1, 34.3, 84.25, 1.9]]

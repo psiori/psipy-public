@@ -21,9 +21,9 @@ from typing import Callable, Deque, Optional
 
 import numpy as np
 
-from psipy.rl.control.nfq import tanh2
-from psipy.rl.plant import Action, State
-from psipy.rl.plant.gym.gym_plant import GymPlant
+from psipy.rl.controllers.nfq import tanh2
+from psipy.rl.core.plant import Action, State
+from psipy.rl.plants.gym.gym_plant import GymPlant
 
 LOG = logging.getLogger(__name__)
 

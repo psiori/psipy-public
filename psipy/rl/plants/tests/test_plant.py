@@ -9,8 +9,8 @@ from collections import OrderedDict
 import numpy as np
 import pytest
 
-from psipy.rl.plant import Action, State, TerminalStates
-from psipy.rl.plant.tests.mocks import MockAction, MockState
+from psipy.rl.core.plant import Action, State, TerminalStates
+from psipy.rl.plants.tests.mocks import MockAction, MockState
 
 
 @pytest.fixture

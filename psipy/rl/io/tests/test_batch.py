@@ -13,7 +13,7 @@ import pytest
 
 from psipy.rl.io.batch import Batch, Episode
 from psipy.rl.io.sart import SARTWriter
-from psipy.rl.plant.tests.mocks import MockAction, MockPlant
+from psipy.rl.plants.tests.mocks import MockAction, MockPlant
 
 
 @pytest.fixture

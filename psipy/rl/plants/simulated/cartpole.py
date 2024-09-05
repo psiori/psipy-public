@@ -2,7 +2,7 @@ import math
 import random
 from typing import Callable, Optional, Tuple, Union
 import numpy as np
-from psipy.rl.plant.plant import Action, Plant, State
+from psipy.rl.core.plant import Action, Plant, State
 
 FLOATMAX = np.finfo(np.float32).max
 PRECISION = 6

@@ -11,8 +11,8 @@ from collections import OrderedDict
 
 import numpy as np
 
-from psipy.rl.plant import Action, Plant, State
-from psipy.rl.plant.plant import TerminalStates
+from psipy.rl.core.plant import Action, Plant, State
+from psipy.rl.core.plant import TerminalStates
 
 __all__ = [
     "MockAction",

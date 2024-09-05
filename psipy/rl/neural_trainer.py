@@ -18,10 +18,10 @@ from tensorflow.keras import layers as tfkl
 
 from psipy.core.rate_schedulers import LinearRateScheduler, RateScheduler
 from psipy.rl import Loop
-from psipy.rl.control import NFQ, NFQs
+from psipy.rl.controllers import NFQ, NFQs
 from psipy.rl.io.batch import Batch
 from psipy.rl.loop import LoopPrettyPrinter
-from psipy.rl.plant import Action, Plant, State
+from psipy.rl.core.plant import Action, Plant, State
 
 LOG = logging.getLogger(__name__)
 

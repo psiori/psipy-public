@@ -16,8 +16,8 @@ the action definition of the action class. For instance, cartpole needs to trans
 import sys
 import time
 
-import gym
-from gym.envs.registration import register
+import gymnasium as gym
+from gymnasium.envs.registration import register
 
 
 def key_press(key, mod):

@@ -3,7 +3,7 @@ from typing import Tuple
 import numpy as np
 import tensorflow as tf
 
-from psipy.rl.control.controller import Controller
+from psipy.rl.core.controller import Controller
 
 
 class Actor:

@@ -11,14 +11,14 @@ import zmq
 
 from psipy.core.rate_schedulers import RateScheduler
 from psipy.rl import Loop
-from psipy.rl.control import NFQ
-from psipy.rl.control.bandits.bandit_optimizers import (
+from psipy.rl.controllers import NFQ
+from psipy.rl.controllers.bandits.bandit_optimizers import (
     BanditOptimizer,
     EpsilonGreedySlidingWindowUCBBanditOptimizer,
 )
-from psipy.rl.control.bandits.multiarmed_bandits import MultiArmedBandit
+from psipy.rl.controllers.bandits.multiarmed_bandits import MultiArmedBandit
 from psipy.rl.neural_trainer import NeuralTrainerProcess, ResetParams
-from psipy.rl.plant import Action, Plant, State
+from psipy.rl.core.plant import Action, Plant, State
 from psipy.rl.visualization import PlottingCallback
 
 LOG = logging.getLogger(__name__)

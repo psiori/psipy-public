@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from psipy.core.notebook_tools import is_notebook
-from psipy.rl.control.bandits.multiarmed_bandits import MultiArmedBandit
+from psipy.rl.controllers.bandits.multiarmed_bandits import MultiArmedBandit
 
 
 class ArmProbabilityCallback:

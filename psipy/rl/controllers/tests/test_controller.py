@@ -7,9 +7,9 @@
 import numpy as np
 import pytest
 
-from psipy.rl.control.controller import ContinuousRandomActionController
-from psipy.rl.control.controller import DiscreteRandomActionController
-from psipy.rl.plant import Action, State
+from psipy.rl.core.controller import ContinuousRandomActionController
+from psipy.rl.core.controller import DiscreteRandomActionController
+from psipy.rl.core.plant import Action, State
 
 
 @pytest.fixture

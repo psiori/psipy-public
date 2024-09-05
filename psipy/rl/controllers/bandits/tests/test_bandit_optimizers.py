@@ -3,7 +3,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from psipy.rl.control.bandits.bandit_optimizers import (
+from psipy.rl.controllers.bandits.bandit_optimizers import (
     EpsilonGreedyBanditOptimizer,
     EpsilonGreedySlidingWindowUCBBanditOptimizer,
     SlidingWindowUCBBanditOptimizer,
@@ -11,7 +11,7 @@ from psipy.rl.control.bandits.bandit_optimizers import (
     ThompsonSamplingBanditOptimizer,
     UCB1BanditOptimizer,
 )
-from psipy.rl.control.bandits.multiarmed_bandits import MultiArmedBandit
+from psipy.rl.controllers.bandits.multiarmed_bandits import MultiArmedBandit
 
 
 def test_choose_best_arm():

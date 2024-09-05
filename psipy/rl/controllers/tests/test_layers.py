@@ -13,8 +13,8 @@ import tensorflow as tf
 import tensorflow.keras as tfk
 import tensorflow.keras.layers as tfkl
 
-from psipy.rl.control.layers import ArgMaxLayer, ArgMinLayer, ClipLayer
-from psipy.rl.control.layers import ExtractIndexLayer, MinLayer
+from psipy.rl.controllers.layers import ArgMaxLayer, ArgMinLayer, ClipLayer
+from psipy.rl.controllers.layers import ExtractIndexLayer, MinLayer
 
 
 @pytest.mark.usefixtures("tensorflow")

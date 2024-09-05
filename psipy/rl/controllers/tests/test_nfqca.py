@@ -9,8 +9,8 @@ import pytest
 import tensorflow as tf
 import tensorflow.keras.layers as tfkl
 
-from psipy.rl.control.nfqca import NFQCA
-from psipy.rl.plant.tests.mocks import MockSingleChannelAction, MockState
+from psipy.rl.controllers.nfqca import NFQCA
+from psipy.rl.plants.tests.mocks import MockSingleChannelAction, MockState
 
 
 @pytest.fixture
