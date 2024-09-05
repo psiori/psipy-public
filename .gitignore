@@ -116,3 +116,5 @@ dask-worker-space
 
 sart/
 *.zip
+
+psidata-*/

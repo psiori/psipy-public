@@ -18,8 +18,8 @@ sys.path.insert(0, os.path.abspath("../"))
 
 # -- Project information -----------------------------------------------------
 
-project = "psipy"
-copyright = "2019, PSIORI GmbH"
+project = "psipy-public"
+copyright = "2019-2024, PSIORI GmbH"
 author = "PSIORI GmbH"
 
 primary_domain = "py"
@@ -143,7 +143,7 @@ html_static_path = ["_static"]
 # html_additional_pages = {"index": "index.rst"}
 
 html_theme_options = {
-    "canonical_url": "https://psipy.azurewebsites.net",
+    "canonical_url": "https://psipy-public.psiori.net",
     "logo_only": False,
     "display_version": False,
     "prev_next_buttons_location": "bottom",
@@ -179,4 +179,4 @@ def linkcode_resolve(domain, info):
     if not info["module"]:
         return None
     filename = info["module"].replace(".", "/")
-    return "https://github.com/psiori/psipy/tree/develop/%s.py" % filename
+    return "https://github.com/psiori/psipy-public/tree/develop/%s.py" % filename

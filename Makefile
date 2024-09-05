@@ -20,9 +20,6 @@ help:
 build:
 	@echo "Not implemented yet."
 
-build_public:
-	@echo "Not implemented yet."
-
 lint-code:
 	flake8 psipy
 
@@ -52,7 +49,7 @@ doc_remove:
 	make -C docs rm
 
 editable_install:
-	pip install -e ".[dev]"
+	pip install -e ".[dev,gym]"
 
 test: clean
 	python3 -c "import tensorflow as tf; print(tf.GIT_VERSION, tf.VERSION)"
@@ -63,7 +60,7 @@ test: clean
 test_venv:
 	python3 -m venv .test_venv
 	. .test_venv/bin/activate
-	pip install -e ".[dev]"
+	pip install -e ".[dev,gym]"
 
 dist/psipy.%:
 	# *nix: %/$* == so
