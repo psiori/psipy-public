@@ -1,20 +1,36 @@
-# PSIORI Machine Learning Toolbox
-# ===========================================
-#
-# Copyright (C) PSIORI GmbH, Germany
-# Proprietary and confidential, all rights reserved.
+"""Neural Fitted Q-Iteration (NFQ) Controller
 
-"""Neural Fitted Q-Iteration
-============================
+This module implements the Neural Fitted Q-Iteration (NFQ) algorithm for reinforcement learning.
+NFQ is an off-policy, model-free algorithm that uses a neural network to approximate the Q-function
+and was originally proposed by Martin Riedmiller in his 2005 paper:
 
-.. autosummary::
+Riedmiller, M. (2005). Neural fitted Q iteration–first experiences with a data efficient
+neural reinforcement learning method. In European Conference on Machine Learning (pp. 317-328).
+Springer, Berlin, Heidelberg.
 
-    NFQ
-    ObservationStack
-    enrich_errors
-    tanh2
+[Link to the paper](https://link.springer.com/chapter/10.1007/11564096_32)
 
+The main components of this module are:
+
+1. NFQ: The main controller class that implements the NFQ algorithm.
+2. ObservationStack: A utility class for stacking and managing observations.
+3. enrich_errors: A function to enrich error information for better debugging.
+4. tanh2: A custom activation function used in the NFQ network.
+
+The NFQ algorithm works by iteratively updating a Q-function approximator (neural network)
+using batches of experience data and applying a Dynamic Programming like update step using
+the observed costs of the transtion and the neural networks approaximation of the exepcted
+future costs of the subsequent state. It can be used with various types of plants.
+
+Key Features:
+- Supports both standard NFQ and double NFQ variants
+- Allows for custom network architectures and hyperparameters
+- Provides utilities for observation preprocessing and error handling
+
+For more details on the algorithm and its implementation, refer to the individual
+class and function docstrings within this module.
 """
+
 import os
 import logging
 import random
@@ -27,12 +43,12 @@ from tensorflow.keras.utils import Sequence
 
 from psipy.core.io import MemoryZipFile
 from psipy.nn.layers import ExpandDims, Squeeze
-from psipy.rl.control.controller import Controller
-from psipy.rl.control.keras_utils import reset_model
-from psipy.rl.control.layers import ArgMinLayer, ExtractIndexLayer, MinLayer
-from psipy.rl.cycle_manager import CM
+from psipy.rl.core.controller import Controller
+from psipy.rl.controllers.keras_utils import reset_model
+from psipy.rl.controllers.layers import ArgMinLayer, ExtractIndexLayer, MinLayer
+from psipy.rl.core.cycle_manager import CM
 from psipy.rl.io.batch import Batch
-from psipy.rl.plant import Action, State
+from psipy.rl.core.plant import Action, State
 from psipy.rl.preprocessing import StackNormalizer
 
 __all__ = ["NFQ", "ObservationStack", "tanh2"]

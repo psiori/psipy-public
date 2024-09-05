@@ -21,7 +21,6 @@ Also provides a CLI to convert sart *.h5 files to csv.
 
 import logging
 import os
-from pprint import pprint
 from collections import OrderedDict
 from copy import deepcopy
 from datetime import datetime
@@ -36,7 +35,7 @@ from psipy import __version__ as psipy_version
 from psipy.core.io.logging import CALENDAR
 from psipy.core.threading_utils import StoppableThread
 from psipy.core.utils import flatten, flatten_dict
-from psipy.rl.cycle_manager import CM
+from psipy.rl.core.cycle_manager import CM
 
 __all__ = ["SARTLogger", "SARTWriter", "SARTReader"]
 
@@ -92,9 +91,6 @@ class ExpandableDataset:
             self.dtype = h5py.string_dtype()
             self.fill_val = None
         
-        print("PATH:")    
-        pprint(hdf_path)
-
         self.dataset = hdf5_file.create_dataset(
             hdf_path,
             shape=(buffer_size, *shape),
@@ -118,8 +114,6 @@ class ExpandableDataset:
         self.finalize()
 
     def _resize(self, rows: int) -> None:
-        print ("RESIZE!")
-        pprint((rows, *self.incoming_shape))
         try:
             self.dataset.resize((rows, *self.incoming_shape))
         except ValueError as e:

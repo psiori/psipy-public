@@ -35,8 +35,8 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 import numpy as np
 
 from psipy.core.io import MemoryZipFile, Saveable
-from psipy.rl.plant import Action, State
-from psipy.rl.plant.plant import Numeric
+from psipy.rl.core.plant import Action, State
+from psipy.rl.core.plant import Numeric
 
 __all__ = [
     "ContinuousRandomActionController",
@@ -329,7 +329,7 @@ class DiscreteRandomActionController(Controller):
 
 
 if __name__ == "__main__":
-    from psipy.rl.plant.tests.mocks import MockAction, MockState
+    from psipy.rl.plants.tests.mocks import MockAction, MockState
 
     cc = ContinuousRandomActionController(
         MockState.channels(), MockAction, action_channels=(MockAction.channels[0],)

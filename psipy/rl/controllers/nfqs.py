@@ -36,11 +36,11 @@ from tensorflow.keras.utils import Sequence
 from psipy.core.io import MemoryZipFile
 from psipy.core.np_utils import cache
 from psipy.nn.layers import ExpandDims, Squeeze
-from psipy.rl.control.controller import Controller
-from psipy.rl.control.nfq import ObservationStack, enrich_errors
-from psipy.rl.cycle_manager import CM
+from psipy.rl.core.controller import Controller
+from psipy.rl.controllers.nfq import ObservationStack, enrich_errors
+from psipy.rl.core.cycle_manager import CM
 from psipy.rl.io.batch import Batch
-from psipy.rl.plant import Action, State
+from psipy.rl.core.plant import Action, State
 from psipy.rl.preprocessing import StackNormalizer
 
 __all__ = ["NFQs"]

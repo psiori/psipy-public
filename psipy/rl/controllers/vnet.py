@@ -24,10 +24,10 @@ import tensorflow as tf
 
 from psipy.core.io import MemoryZipFile
 from psipy.nn.layers import ExpandDims, Squeeze
-from psipy.rl.control.controller import Controller
-from psipy.rl.control.nfq import ObservationStack
+from psipy.rl.core.controller import Controller
+from psipy.rl.controllers.nfq import ObservationStack
 from psipy.rl.io.batch import Batch
-from psipy.rl.plant import Action, State
+from psipy.rl.core.plant import Action, State
 from psipy.rl.preprocessing import StackNormalizer
 
 __all__ = ["VNet"]

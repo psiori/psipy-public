@@ -7,7 +7,7 @@
 
 # PSIORI's Machine Learning Library -- The Public Part
 
-The psipy library is a private collection of machine learning algorithms and tools developed and used by PSIORI. It is designed to be a modular and extensible framework for building and deploying software solutions that incorporate or are based on machine learning components. This public version of the library is a subset of the full private library and currently includes only large parts of the Reinforcement Learning (RL) module. It may be expanded to include additional modules in the future.
+The psipy library is a private collection of machine learning algorithms and tools developed and used by PSIORI. It is designed to be a modular and extensible framework for building and deploying software solutions that incorporate or are based on machine learning components. This public version of the library is a subset of the full private library and currently includes only large parts of the Reinforcement Learning (RL) module. It may be expanded to include additgional modules in the future.
 
 ## Installation
 

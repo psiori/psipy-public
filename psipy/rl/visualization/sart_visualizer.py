@@ -18,7 +18,7 @@ from typing import Dict, List, Optional
 import matplotlib.pyplot as plt
 
 from psipy.rl.io.sart import SARTReader
-from psipy.rl.plant import State
+from psipy.rl.core.plant import State
 
 
 def plot_observations(

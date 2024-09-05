@@ -1,9 +1,3 @@
-# PSIORI Machine Learning Toolbox
-# ===========================================
-#
-# Copyright (C) PSIORI GmbH, Germany
-# Proprietary and confidential, all rights reserved.
-
 """Plants can be anything from factories over simulations to computer games.
 
 .. todo::
@@ -38,7 +32,7 @@ from typing import Sequence, Tuple, Type, TypeVar, Union
 import numpy as np
 
 from psipy.core.utils import flatten
-from psipy.rl.cycle_manager import CM
+from psipy.rl.core.cycle_manager import CM
 
 __all__ = ["Action", "Plant", "State", "TerminalStates"]
 
@@ -98,15 +92,9 @@ class Action(metaclass=ABCMeta):
         data: Union[np.ndarray, Sequence[Numeric], Mapping[str, Numeric]],
         additional_data: Optional[Mapping[str, Numeric]] = None,
     ) -> None:
-        print("INIT ACTION ABSTRACT BASE CLASS")
-        print(data)
     
         # Actions passed as explicit key-value pairs. May be partial.
         if isinstance(data, dict):
-            print("DICT")
-            print(self.channels)
-            print(data.keys())
-            
             if set(data.keys()).difference(self.channels):
                 raise ValueError(f"Received unknown action channels in {data}")
             channels = [c for c in self.channels if c in data]
@@ -114,9 +102,6 @@ class Action(metaclass=ABCMeta):
 
         # Actions passed as individual values. Has to be one value per channel.
         else:  # elif isinstance(values, (np.ndarray, list))
-            print("NOT A DICT")
-            print(len(self.channels))
-        
             if len(data) != len(self.channels):
                 raise ValueError("Expected a single value for each action channel.")
             data = dict(zip(self.channels, np.asarray(data).ravel()))
@@ -791,7 +776,7 @@ class Plant(Generic[TState, TAction], metaclass=ABCMeta):
 
 
 if __name__ == "__main__":
-    from psipy.rl.plant.tests.mocks import MockDiscreteAction
+    from psipy.rl.plants.tests.mocks import MockDiscreteAction
 
     a = MockDiscreteAction({"channel1": 1})
 

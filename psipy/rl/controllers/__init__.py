@@ -18,7 +18,7 @@ NFQ
 
 **Neural Fitted Q-Iteration**
 
-:mod:`psipy.rl.control.nfq`
+:mod:`psipy.rl.controllers.nfq`
 
 In NFQ, a neural q-function approximator is learned by iterativley fitting it
 to cached Q-targets. The cached targets are updated over *iterations*, updating
@@ -176,12 +176,12 @@ be used, but instead of randomly sampling, the noise is added.
 """
 
 
-from psipy.rl.control.controller import ContinuousRandomActionController
-from psipy.rl.control.controller import Controller, DiscreteRandomActionController
-from psipy.rl.control.nfq import NFQ
-from psipy.rl.control.nfqca import NFQCA
-from psipy.rl.control.nfqs import NFQs
-from psipy.rl.control.noise import OrnsteinUhlenbeckActionNoise, RandomNormalNoise
+from psipy.rl.core.controller import ContinuousRandomActionController
+from psipy.rl.core.controller import Controller, DiscreteRandomActionController
+from psipy.rl.controllers.nfq import NFQ
+from psipy.rl.controllers.nfqca import NFQCA
+from psipy.rl.controllers.nfqs import NFQs
+from psipy.rl.controllers.noise import OrnsteinUhlenbeckActionNoise, RandomNormalNoise
 
 __all__ = [
     "ContinuousRandomActionController",

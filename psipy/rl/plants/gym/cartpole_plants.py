@@ -1,9 +1,3 @@
-# PSIORI Machine Learning Toolbox
-# ===========================================
-#
-# Copyright (C) PSIORI GmbH, Germany
-# Proprietary and confidential, all rights reserved.
-
 """Plants for control tasks within a simulated Cartpole environment.
 
 There are three different main plants: :class:`CartPolePlant`,
@@ -28,9 +22,9 @@ from typing import Callable, Deque, Optional
 
 import numpy as np
 
-from psipy.rl.control.nfq import tanh2
-from psipy.rl.plant import Action, State, TState
-from psipy.rl.plant.gym.gym_plant import GymPlant
+from psipy.rl.controllers.nfq import tanh2
+from psipy.rl.core.plant import Action, State, TState
+from psipy.rl.plants.gym.gym_plant import GymPlant
 
 LOG = logging.getLogger(__name__)
 

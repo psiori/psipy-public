@@ -20,15 +20,15 @@ from tensorflow.keras.optimizers import RMSprop
 
 from psipy.core.io import MemoryZipFile
 from psipy.nn.optimizers.rprop import Rprop
-from psipy.rl.control import Controller
-from psipy.rl.control.keras_utils import ActorCriticOptimizerRMSprop
-from psipy.rl.control.keras_utils import ActorCriticOptimizerRprop
-from psipy.rl.control.keras_utils import clone_model, reset_model
-from psipy.rl.control.layers import GaussianNoiseLayer
-from psipy.rl.control.nfq import ObservationStack, enrich_errors
-from psipy.rl.control.noise import Noise
+from psipy.rl.core.controller import Controller
+from psipy.rl.controllers.keras_utils import ActorCriticOptimizerRMSprop
+from psipy.rl.controllers.keras_utils import ActorCriticOptimizerRprop
+from psipy.rl.controllers.keras_utils import clone_model, reset_model
+from psipy.rl.controllers.layers import GaussianNoiseLayer
+from psipy.rl.controllers.nfq import ObservationStack, enrich_errors
+from psipy.rl.controllers.noise import Noise
 from psipy.rl.io.batch import Batch
-from psipy.rl.plant import State
+from psipy.rl.core.plant import State
 from psipy.rl.preprocessing import StackNormalizer
 
 __all__ = ["NFQCA"]

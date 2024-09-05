@@ -1,9 +1,3 @@
-# PSIORI Machine Learning Toolbox
-# ===========================================
-#
-# Copyright (C) PSIORI GmbH, Germany
-# Proprietary and confidential, all rights reserved.
-
 """The :class:`CycleManager` manages communication and holds cycle statistics.
 
 The :class:`CycleManager` should never be instantiated directly, instead one

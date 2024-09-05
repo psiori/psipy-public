@@ -22,7 +22,7 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-from psipy.rl.plant import Plant, TAction, TState
+from psipy.rl.core.plant import Plant, TAction, TState
 
 AVAILABLE_ENVIRONMENTS = (
     "CartPole-v0",

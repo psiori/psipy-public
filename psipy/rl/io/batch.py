@@ -23,9 +23,9 @@ from typing import Callable, ClassVar, Dict, List, Optional, Sequence, Set, Tupl
 import numpy as np
 from tensorflow.keras.utils import Sequence as KSequence
 
-from psipy.rl.control import Controller
+from psipy.rl.core.controller import Controller
 from psipy.rl.io.sart import SARTReader
-from psipy.rl.plant.plant import Numeric
+from psipy.rl.core.plant import Numeric
 
 __all__ = ["Batch", "Episode"]
 

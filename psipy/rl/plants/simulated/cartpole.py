@@ -1,47 +1,39 @@
-# PSIORI Machine Learning Toolbox
-# ===========================================
-#
-# Copyright (C) PSIORI GmbH, Germany
-# Proprietary and confidential, all rights reserved.
-
-"""Cartpole Gym Environments
-
-OpenAI has developed a Cartpole environment with rendering capabilities
-for the training of reinforcement learning agents in order to learn how to balance
-a pole. We extend this environment to create different tasks involving the cart and
-pole, for instance, sway control or swing up.
-
-When creating a new environment, it needs to be registered in envs.__init__.py and
-a plant needs to be created which uses that environment.
-"""
-
 import math
 import random
 from typing import Callable, Optional, Tuple, Union
-
 import numpy as np
-from gymnasium import logger, spaces
-from gymnasium.envs.classic_control.cartpole import CartPoleEnv
-
-from psipy.rl.plant.gym.envs.renderer import RenderMixin, RenderMixinTimeOnly
+from psipy.rl.plant.plant import Action, Plant, State
 
 FLOATMAX = np.finfo(np.float32).max
 PRECISION = 6
 USE_FRICTION = True
 
-
-class CartPoleV2Env(RenderMixinTimeOnly, CartPoleEnv):
-    """The same exact environment, but with the renderer mixed in."""
-
-    def __init__(self):
-        RenderMixinTimeOnly.__init__(self)
-        CartPoleEnv.__init__(self)
-
-
 def polespeed(second, first):
     return np.tan(second-first)
 
-class CartPoleUnboundedEnv(RenderMixin, CartPoleEnv):
+class CartPoleAction(Action):
+    """Parent class of cartpole actions."""
+    pass
+
+class CartPoleBangAction(CartPoleAction):
+    """Action with left actions right actions"""
+
+    channels = ("move",)
+    legal_values = ((-10, 10),)
+
+class CartPoleState(State):
+    """Cartpole state that uses trig values for the angle instead of radian/deg."""
+
+    _channels = (
+        "cart_position",
+        "cart_velocity",
+        "pole_sine",
+        "pole_cosine",
+        "pole_velocity",
+        "move_ACT",
+    )
+
+class CartPole(Plant[CartPoleState, CartPoleAction]):
     """Cartpole with no angle terminals, allowing the pole to move freely.
 
     Environment with a pole on a cart. Can be used for both a sway goal or
@@ -91,8 +83,6 @@ class CartPoleUnboundedEnv(RenderMixin, CartPoleEnv):
         cost_func: Optional[Callable[[np.ndarray], np.ndarray]] = None,
         sway_control: bool = False,
     ):
-        RenderMixin.__init__(self, cost_func)
-        CartPoleEnv.__init__(self)
         self.sway_control = sway_control
 
         # Sim constants
@@ -117,14 +107,14 @@ class CartPoleUnboundedEnv(RenderMixin, CartPoleEnv):
         self.max_cart_speed = 1.0
         low = np.array([-4.8, -self.max_cart_speed, -np.inf, -np.inf, -1, 1])
         high = np.array([4.8, self.max_cart_speed, np.inf, np.inf, -1, 1])
-        self.observation_space = spaces.Box(low, high, dtype=np.float32)
-        if self.continuous:
-            self.action_space = spaces.Box(
-                np.array([-np.inf]), np.array([np.inf]), dtype=np.float32
-            )
-        else:
-            # 999 is a placeholder to avoid having to pass in a value
-            self.action_space = spaces.Discrete(999)
+    #   self.observation_space = spaces.Box(low, high, dtype=np.float32)
+    #    if self.continuous:
+    #        self.action_space = spaces.Box(
+    #            np.array([-np.inf]), np.array([np.inf]), dtype=np.float32
+    #        )
+    #    else:
+    #        # 999 is a placeholder to avoid having to pass in a value
+    #        self.action_space = spaces.Discrete(999)
 
         self.current_cost = 0
         self.total_cost = 0
@@ -136,7 +126,7 @@ class CartPoleUnboundedEnv(RenderMixin, CartPoleEnv):
 
         self.reset()
 
-    def step(self, action: Union[float, int]):
+    def _get_next_state(self, state: CartPoleState, action: CartPoleAction) -> CartPoleState:
         """Apply action and step the environment tau seconds into the future.
 
         The majority of this code is replicated from the OpenAI gym cartpole code.
@@ -208,13 +198,13 @@ class CartPoleUnboundedEnv(RenderMixin, CartPoleEnv):
             self.steps_beyond_done = 0
         elif done:
             assert isinstance(self.steps_beyond_done, int)
-            if self.steps_beyond_done == 0:
-                logger.warn(
-                    "You are calling 'step()' even though this environment has "
-                    "already returned done = True. You should always call "
-                    "'reset()' once you receive 'done = True' -- any further "
-                    "steps are undefined behavior."
-                )
+            #if self.steps_beyond_done == 0:
+                #logger.warn(
+                #    "You are calling 'step()' even though this environment has "
+                #    "already returned done = True. You should always call "
+                #    "'reset()' once you receive 'done = True' -- any further "
+                #    "steps are undefined behavior."
+                #)
             self.steps_beyond_done += 1
 
         self.step_counter += 1
@@ -226,10 +216,14 @@ class CartPoleUnboundedEnv(RenderMixin, CartPoleEnv):
         # The state returned only includes x, x_dot, sin, cos, theta_dot
         state = np.asarray([self.state[0], self.state[1], sin, cos, self.state[3]])
         return state, cost, done, False, info
-
+    
     def get_state_cost(self, state):
         return 1  # unused, please train on a specific cost function!
 
+    def notify_episode_stops(self) -> bool:
+        self.reset()
+        return True
+    
     def reset(self):
         self.x_goal = 0.0
         self.x_start = random.random() - 0.5  # 0.0  # random.random() * 3.4 - 1.7
@@ -258,130 +252,5 @@ class CartPoleUnboundedEnv(RenderMixin, CartPoleEnv):
         return np.array(state)
 
 
-class CartPoleUnboundedContinuousEnv(CartPoleUnboundedEnv):
-    continuous = True
-
-
-class CartPoleAssistedBalanceEnv(RenderMixin, CartPoleEnv):
-    """Cartpole but with wider angle limits and fake stops."""
-
-    def __init__(self, cost_func: Optional[Callable[[np.ndarray], np.ndarray]] = None):
-        RenderMixin.__init__(self, cost_func)
-        CartPoleEnv.__init__(self)
-        self.gravity = 9.8
-        self.masscart = 1.0
-        self.masspole = 0.0001
-        self.total_mass = self.masspole + self.masscart
-        self.length = 0.5  # actually half the pole's length
-        self.polemass_length = self.masspole * self.length
-        self.force_mag = 10.0
-        self.tau = 0.033  # seconds between state updates
-        self.kinematics_integrator = "semieuler"
-
-        # Angle at which to fail the episode
-        self.theta_threshold_radians = 41 * 2 * math.pi / 360
-        self.x_threshold = 2.4
-
-        # Goal state definition
-        self.x_dot_goal = 0
-        self.theta_goal = 0
-        self.theta_dot_goal = 0
-        self.max_x_dot_change = 0.3
-
-        # Angle limit set to 2 * theta_threshold_radians so failing observation
-        # is still within bounds.
-        high = np.array(
-            [
-                self.x_threshold * 2,
-                np.finfo(np.float32).max,
-                self.theta_threshold_radians * 2,
-                np.finfo(np.float32).max,
-            ],
-            dtype=np.float32,
-        )
-
-        self.action_space = spaces.Discrete(5)
-        self.observation_space = spaces.Box(-high, high, dtype=np.float32)
-
-        self.current_force = 0
-        self.step_counter = 0
-        self.start_state = None
-
-        self.seed()
-        self.viewer = None
-        self.state = None
-
-        self.steps_beyond_done = None
-
-    def step(self, action):
-        x, x_dot, theta, theta_dot = self.state
-        if self.start_state is None:
-            self.start_state = self.state
-        force = action
-        self.current_force = force
-        costheta = math.cos(theta)
-        sintheta = math.sin(theta)
-
-        # For the interested reader:
-        # https://coneural.org/florian/papers/05_cart_pole.pdf
-        temp = (
-            force + self.polemass_length * theta_dot ** 2 * sintheta
-        ) / self.total_mass
-        thetaacc = (self.gravity * sintheta - costheta * temp) / (
-            self.length * (4.0 / 3.0 - self.masspole * costheta ** 2 / self.total_mass)
-        )
-        xacc = (
-            force / self.total_mass
-        )  # temp - self.polemass_length * thetaacc * costheta / self.total_mass
-
-        if self.kinematics_integrator == "euler":
-            x = x + self.tau * x_dot
-            x_dot = x_dot + self.tau * xacc
-            theta = theta + self.tau * theta_dot
-            theta_dot = theta_dot + self.tau * thetaacc
-        else:  # semi-implicit euler
-            x_dot = x_dot + self.tau * xacc
-            x = x + self.tau * x_dot
-            theta_dot = theta_dot + self.tau * thetaacc
-            theta = theta + self.tau * theta_dot
-
-        done = bool(x < -self.x_threshold or x > self.x_threshold)
-
-        # Add invisible stops for the pole
-        if theta >= self.theta_threshold_radians:
-            theta = self.theta_threshold_radians - 0.001
-            theta_dot = -1  # add a bounce
-        elif theta <= -self.theta_threshold_radians:
-            theta = -self.theta_threshold_radians + 0.001
-            theta_dot = 1  # add a bounce
-
-        self.state = (x, x_dot, theta, theta_dot)
-
-        if not done:
-            reward = 1.0
-        elif self.steps_beyond_done is None:
-            self.steps_beyond_done = 0
-            reward = 1.0
-        else:
-            if self.steps_beyond_done == 0:
-                logger.warn(
-                    "You are calling 'step()' even though this "
-                    "environment has already returned done = True. You "
-                    "should always call 'reset()' once you receive 'done = "
-                    "True' -- any further steps are undefined behavior."
-                )
-            self.steps_beyond_done += 1
-            reward = 0.0
-
-        self.step_counter += 1
-
-        return np.array(self.state), reward, done, {}
-
-    def reset(self):
-        self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(4,))
-        # Make pole lie on one of the stops at start.
-        self.state[2] = -self.theta_threshold_radians
-        if np.random.random() >= 0.5:
-            self.state[2] = self.theta_threshold_radians
-        self.steps_beyond_done = None
-        return np.array(self.state)
+#class CartPoleUnboundedContinuousEnv(CartPoleUnboundedEnv):
+#    continuous = True

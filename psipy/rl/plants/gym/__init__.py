@@ -12,12 +12,12 @@
 
 """
 
-from psipy.rl.plant.gym.cartpole_plants import CartPolePlant
-from psipy.rl.plant.gym.cartpole_plants import CartPoleUnboundedContinuousPlant
-from psipy.rl.plant.gym.cartpole_plants import CartPoleUnboundedPlant
-from psipy.rl.plant.gym.cartpole_plants import CartPoleAssistedBalancePlant
-from psipy.rl.plant.gym.envs import *  # noqa
-from psipy.rl.plant.gym.gym_plant import GymPlant
+from psipy.rl.plants.gym.cartpole_plants import CartPolePlant
+from psipy.rl.plants.gym.cartpole_plants import CartPoleUnboundedContinuousPlant
+from psipy.rl.plants.gym.cartpole_plants import CartPoleUnboundedPlant
+from psipy.rl.plants.gym.cartpole_plants import CartPoleAssistedBalancePlant
+from psipy.rl.plants.gym.envs import *  # noqa
+from psipy.rl.plants.gym.gym_plant import GymPlant
 
 __all__ = [
     "GymPlant",

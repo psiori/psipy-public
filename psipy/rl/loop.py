@@ -28,11 +28,11 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
-from psipy.rl.control import Controller
-from psipy.rl.cycle_manager import CM
-from psipy.rl.exceptions import NotNotifiedOfEpisodeStart
+from psipy.rl.core.controller import Controller
+from psipy.rl.core.cycle_manager import CM
+from psipy.rl.core.exceptions import NotNotifiedOfEpisodeStart
 from psipy.rl.io.sart import SARTLogger
-from psipy.rl.plant import Plant, State, TAction, TState
+from psipy.rl.core.plant import Plant, State, TAction, TState
 
 __all__ = ["Loop", "LoopPrettyPrinter"]
 
