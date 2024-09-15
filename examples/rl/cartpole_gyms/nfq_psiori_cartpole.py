@@ -57,43 +57,45 @@ nfq = NFQ(
     lookback=lookback,
     doubleq=False,
     prioritized=False,
+    cost_function=plant._cost_function,
 )
 
 # Collect initial data with a discrete random action controller
-if "--collect" in sys.argv:
-    nfq.epsilon = 1
-    loop = Loop(plant, nfq, "simulated.cartpole.CartPole", sart_folder)
+
+loop = Loop(plant, nfq, "simulated.cartpole.CartPole", sart_folder, render=True)
+
+for i in range(200):
+    nfq.epsilon = 0.2
     loop.run(1)
-    nfq.epsilon = 0
 
 
-# Load the collected data
-batch = Batch.from_hdf5(
-    sart_folder,
-    lookback=lookback,
-    control=nfq,
-#    prioritization="proportional",
-)
+    # Load the collected data
+    batch = Batch.from_hdf5(
+        sart_folder,
+        lookback=lookback,
+        control=nfq,
+    #    prioritization="proportional",
+    )
 
-# Fit the normalizer
-nfq.fit_normalizer(batch.observations, method="max")
+    # Fit the normalizer
+    nfq.fit_normalizer(batch.observations, method="max")
 
-# Fit the controller
+    # Fit the controller
 #callback = PlottingCallback(
 #    ax1="q", is_ax1=lambda x: x.endswith("q"), ax2="mse", is_ax2=lambda x: x == "loss"
 #)
-try:
-    nfq.fit(
-        batch,
-        iterations=10,
-        epochs=100,
-        minibatch_size=1024,
-        gamma=0.99,
+    try:
+        nfq.fit(
+            batch,
+            iterations=2,
+            epochs=5,
+            minibatch_size=256,
+            gamma=0.99,
 #        callbacks=[callback],
-    )
-except KeyboardInterrupt:
-    pass
+        )
+    except KeyboardInterrupt:
+        pass
 
 # Eval the controller with rendering on.  Enjoy!
-loop = Loop(plant, nfq, "simulated.cartpole.CartPole", f"{sart_folder}-eval", render=True)
-loop.run(2)
+#loop = Loop(plant, nfq, "simulated.cartpole.CartPole", f"{sart_folder}-eval", render=True)
+#loop.run(2)
