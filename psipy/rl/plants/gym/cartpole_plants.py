@@ -121,9 +121,6 @@ class CartPolePlant(GymPlant[CartPoleState, CartPoleGymAction]):
     def _get_next_state(
         self, state: CartPoleState, action: CartPoleGymAction
     ) -> CartPoleState:
-        print("ACTION:")
-        print(action.as_dict())
-        
         # SL: HACK to make sure the action is an int, not a np.float64 comming from NFQ.
         action = CartPoleGymAction({'move': int(action['move'])})
         

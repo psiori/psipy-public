@@ -3,6 +3,8 @@ import random
 from typing import Callable, Optional, Tuple, Union
 import numpy as np
 from psipy.rl.core.plant import Action, Plant, State
+from psipy.rl.controllers.nfq import tanh2
+
 
 FLOATMAX = np.finfo(np.float32).max
 PRECISION = 6
@@ -27,11 +29,20 @@ class CartPoleState(State):
     _channels = (
         "cart_position",
         "cart_velocity",
+        "pole_angle",
         "pole_sine",
         "pole_cosine",
         "pole_velocity",
         "move_ACT",
     )
+
+def default_cost_function(state: np.ndarray) -> np.ndarray:
+    x, x_dot, theta, sintheta, costheta, theta_dot, move_ACT = state
+
+    if (abs(x) > 2.4):
+        return 1
+
+    return tanh2(theta, C=0.1, mu=0.05)
 
 class CartPole(Plant[CartPoleState, CartPoleAction]):
     """Cartpole with no angle terminals, allowing the pole to move freely.
@@ -40,8 +51,6 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
     a swing up goal, or something else. Behavior depends on the cost function
     used.
 
-        * Sway: cart should be moved to a specific static goal position during which
-            the pole should be steadily facing downwards.
         * Swing Up: cart should be moved to a specific static goal position
             and balance the pole vertically upwards.
 
@@ -78,12 +87,12 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
     steps_beyond_done: Optional[int]
     state: Tuple[float, float, float, float, float, float]
 
+
     def __init__(
         self,
-        cost_func: Optional[Callable[[np.ndarray], np.ndarray]] = None,
-        sway_control: bool = False,
+        cost_function: Optional[Callable[[np.ndarray], np.ndarray]] = default_cost_function,
     ):
-        self.sway_control = sway_control
+        super().__init__(cost_function)
 
         # Sim constants
         self.gravity = 9.81
@@ -116,13 +125,6 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
     #        # 999 is a placeholder to avoid having to pass in a value
     #        self.action_space = spaces.Discrete(999)
 
-        self.current_cost = 0
-        self.total_cost = 0
-        self.current_force = 0.0
-        self.step_counter = 0
-        self.x_goal = None
-        self.x_start = None
-        self.start_state = None
 
         self.reset()
 
@@ -140,18 +142,11 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
             * Forces the use of semi-euler physics calculation, which seems more realistic.
 
         """
+        #TODO: assert state == current_state 
         info = {}
-        x, x_dot, theta, theta_dot, sintheta, costheta = self.state
+        x, x_dot, theta, sintheta, costheta, theta_dot, move_ACT = self._current_state.as_array()
 
-        # Discrete actions should use the actual force values desired in the action class, instead
-        # of just directional -1,0,1 values.
-        # if action == 0:
-        #     force = 10
-        # elif action == 1:
-        #     force = 0
-        # elif action == 2:
-        #     force = -10
-        force = action
+        force = action["move"]
         self.current_force = force
 
         # costheta = math.cos(theta)
@@ -182,44 +177,17 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         sin = math.sin(theta)
         cos = math.cos(theta)
 
-        self.state = (x, x_dot, theta, theta_dot, sin, cos)
-
-        # Cart out of bounds terminal
-        done = abs(x) > 2.4
-        cost = self.get_state_cost(self.state)
-        assert 0 <= cost <= 1
         # Penalize strongly going off screen or high pole
-        if done:
-            cost = 1
-        self.current_cost = cost
-        self.total_cost += cost
-
-        if done and self.steps_beyond_done is None:
-            self.steps_beyond_done = 0
-        elif done:
-            assert isinstance(self.steps_beyond_done, int)
-            #if self.steps_beyond_done == 0:
-                #logger.warn(
-                #    "You are calling 'step()' even though this environment has "
-                #    "already returned done = True. You should always call "
-                #    "'reset()' once you receive 'done = True' -- any further "
-                #    "steps are undefined behavior."
-                #)
-            self.steps_beyond_done += 1
-
-        self.step_counter += 1
+        terminal = False
+        if abs(x) > 2.4:
+            terminal = True
 
         info["force"] = force
         info["theta_accel"] = thetaacc
         info["x_accel"] = xacc
 
-        # The state returned only includes x, x_dot, sin, cos, theta_dot
-        state = np.asarray([self.state[0], self.state[1], sin, cos, self.state[3]])
-        return state, cost, done, False, info
+        return CartPoleState([x, x_dot, theta, sin, cos, theta_dot, force], 0.0, terminal)
     
-    def get_state_cost(self, state):
-        return 1  # unused, please train on a specific cost function!
-
     def notify_episode_stops(self) -> bool:
         self.reset()
         return True
@@ -228,29 +196,17 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         self.x_goal = 0.0
         self.x_start = random.random() - 0.5  # 0.0  # random.random() * 3.4 - 1.7
         # If doing the sway control task, do not spawn near the middle
-        if self.sway_control:
-            # Left or right of center?
-            if random.random() < 0.5:
-                # Left of center
-                self.x_start = random.random() - 2  # [-2,-1)
-            else:
-                # Right of center
-                self.x_start = random.random() + 1  # [1,2)
         x_dot = 0
         theta = np.pi - (random.random() * 0.1 - 0.05)
         theta_dot = 0
         sin = math.sin(theta)
         cos = math.cos(theta)
-        self.start_state = (self.x_start, x_dot, theta, theta_dot, sin, cos)
-        self.state = (self.x_start, x_dot, theta, theta_dot, sin, cos)
-        self.steps_beyond_done = None
-        self.step_counter = 0
-        self.current_cost = self.get_state_cost(self.state)
-        self.total_cost = self.current_cost
-        # The state returned only includes x, x_dot, sin, cos, theta_dot
-        state = np.asarray((self.x_start, x_dot, sin, cos, theta_dot))
-        return np.array(state)
 
+        state = [self.x_start, x_dot, theta, sin, cos, theta_dot, 0.0]
+        cost = self._cost_function(state)
+
+        self._current_state = CartPoleState(state, cost, False)# zero action
+        return self._current_state
 
 #class CartPoleUnboundedContinuousEnv(CartPoleUnboundedEnv):
 #    continuous = True
