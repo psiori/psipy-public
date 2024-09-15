@@ -16,10 +16,10 @@ import sys
 import tensorflow as tf
 from tensorflow.keras import layers as tfkl
 
-from psipy.rl.control.nfq import NFQ
+from psipy.rl.controllers.nfq import NFQ
 from psipy.rl.io.batch import Batch
 from psipy.rl.loop import Loop
-from psipy.rl.plant.gym.cartpole_plants import (
+from psipy.rl.plants.gym.cartpole_plants import (
     CartPoleGymAction,
     CartPolePlant,
     CartPoleState,
@@ -69,7 +69,7 @@ if "--collect" in sys.argv:
 # Load the collected data
 batch = Batch.from_hdf5(
     sart_folder,
-    action_channels=(f"{ActionType.channels[0]}_index",),
+#    action_channels=(f"{ActionType.channels[0]}_index",),
     lookback=lookback,
     control=nfq,
     prioritization="proportional",

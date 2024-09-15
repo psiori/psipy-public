@@ -14,7 +14,7 @@ from psipy.rl.plants.simulated.cartpole import (
     CartPole,
     CartPoleState,
 )
-from psipy.rl.visualization.plotting_callback import PlottingCallback
+#from psipy.rl.visualization.plotting_callback import PlottingCallback
 
 # Define where we want to save our SART files
 sart_folder = "psidata-sart-cartpole-swingup"
@@ -35,6 +35,15 @@ def make_model(n_inputs, n_outputs, lookback):
 plant = CartPole()  # note: this is instantiated!
 ActionType = CartPoleBangAction
 StateType = CartPoleState
+
+state_channels = [
+    "cart_position",
+    "cart_velocity",
+    "pole_sine",
+    "pole_cosine",
+    "pole_velocity",
+#   "move_ACT",  # add, if lookback > 1
+]
 lookback = 1
 
 
@@ -53,26 +62,26 @@ nfq = NFQ(
 # Collect initial data with a discrete random action controller
 if "--collect" in sys.argv:
     nfq.epsilon = 1
-    loop = Loop(plant, nfq, "CartPolev0", sart_folder)
-    loop.run(200)
+    loop = Loop(plant, nfq, "simulated.cartpole.CartPole", sart_folder)
+    loop.run(1)
     nfq.epsilon = 0
+
 
 # Load the collected data
 batch = Batch.from_hdf5(
     sart_folder,
-#    action_channels=(f"{ActionType.channels[0]}_index",),
     lookback=lookback,
     control=nfq,
-    prioritization="proportional",
+#    prioritization="proportional",
 )
 
 # Fit the normalizer
 nfq.fit_normalizer(batch.observations, method="max")
 
 # Fit the controller
-callback = PlottingCallback(
-    ax1="q", is_ax1=lambda x: x.endswith("q"), ax2="mse", is_ax2=lambda x: x == "loss"
-)
+#callback = PlottingCallback(
+#    ax1="q", is_ax1=lambda x: x.endswith("q"), ax2="mse", is_ax2=lambda x: x == "loss"
+#)
 try:
     nfq.fit(
         batch,
@@ -80,15 +89,11 @@ try:
         epochs=100,
         minibatch_size=1024,
         gamma=0.99,
-        callbacks=[callback],
+#        callbacks=[callback],
     )
 except KeyboardInterrupt:
     pass
 
 # Eval the controller with rendering on.  Enjoy!
-loop = Loop(plant, nfq, "CartPolev0Eval", f"{sart_folder}-eval", render=True)
-loop.run(200)
-
-print(f"Solved at: {batch.num_episodes if plant.is_solved else 'Not solved!'}")
-cycle_time = CartPolePlant().calculate_cycle_time(len(batch.observations))
-print(f"Cycle time: {cycle_time:.2f} seconds")
+loop = Loop(plant, nfq, "simulated.cartpole.CartPole", f"{sart_folder}-eval", render=True)
+loop.run(2)
