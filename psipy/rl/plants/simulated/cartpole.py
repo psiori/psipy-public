@@ -1,10 +1,40 @@
 import math
 import random
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, Optional, Tuple, Type, Union
 import numpy as np
 from psipy.rl.core.plant import Action, Plant, State
 from psipy.rl.controllers.nfq import tanh2
 
+# This plant contains modified code from the gymnasium cartpole example.
+# To satisfy their licence conditions, we include the following statement
+# from gymnaisum:
+
+# The MIT License
+
+# Copyright (c) 2016 OpenAI
+# Copyright (c) 2022 Farama Foundation
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
+
+# The derived work (this file) is also licensed under the BSD license as is
+# psipy-public as a whole. See LICENSE file in main directory.   
 
 FLOATMAX = np.finfo(np.float32).max
 PRECISION = 6
@@ -20,6 +50,7 @@ class CartPoleAction(Action):
 class CartPoleBangAction(CartPoleAction):
     """Action with left actions right actions"""
 
+    dtype = "discrete"
     channels = ("move",)
     legal_values = ((-10, 10),)
 
@@ -36,17 +67,18 @@ class CartPoleState(State):
         "move_ACT",
     )
 
-def default_cost_function(state: np.ndarray) -> np.ndarray:
-    x, x_dot, theta, sintheta, costheta, theta_dot, move_ACT = state
+def make_default_cost_function(x_threshold: float = 2.4) -> Callable[[np.ndarray], np.ndarray]:
+    def cost_function(state: np.ndarray) -> np.ndarray:
+        x, x_dot, theta, sintheta, costheta, theta_dot, move_ACT = state
 
-    cost = tanh2(theta, C=0.1, mu=0.05) / 10.0
+        cost = tanh2(theta, C=0.1, mu=0.05) / 100.0
 
-    if (abs(x) > 2.4):
-        cost = 1
+        if (abs(x) >= x_threshold):
+            cost = 1.0
 
-    print(">>>>>>>>> cost", cost)
+        return cost
 
-    return cost
+    return cost_function
 
 
 class CartPole(Plant[CartPoleState, CartPoleAction]):
@@ -95,10 +127,20 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
 
     def __init__(
         self,
-        cost_function: Optional[Callable[[np.ndarray], np.ndarray]] = default_cost_function,
+        x_threshold: float = 2.4,
+        cost_function: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+        state_type: Type[CartPoleState] = CartPoleState,
+        action_type: Type[CartPoleAction] = CartPoleBangAction,
         render_mode: str = "human",
     ):
+        if cost_function is None:
+            cost_function = make_default_cost_function(x_threshold)
+
         super().__init__(cost_function)
+
+        self.x_threshold = x_threshold
+        self.state_type = state_type
+        self.action_type = action_type
 
         self.render_mode = render_mode
 
@@ -119,8 +161,6 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         self.x_dot_goal = 0
         self.theta_goal = math.pi
         self.theta_dot_goal = 0
-
-        self.x_threshold = 2.4
 
         # Legal observation and action observation
         self.max_cart_speed = 1.0

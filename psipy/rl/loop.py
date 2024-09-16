@@ -180,7 +180,7 @@ class Loop:
                     cost = self.plant.get_cost(next_state)
                     terminal = self.plant.is_terminal(next_state)
                 self.trajectory.append(next_state)
-                action_dict = action.as_dict()#with_additional=True)
+                action_dict = action.as_dict(with_additional=True)
                 data = dict(state=state.as_dict(), action=action_dict)
                 CM.step(data)  # Increments step counter.
                 with CM["sart-append"]:

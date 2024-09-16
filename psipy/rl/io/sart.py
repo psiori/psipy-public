@@ -570,6 +570,7 @@ class SARTReader:
               in which one channel is an image and the other is a vector.  These
               can not be coerced into one numpy array, and thus will fail.
         """
+
         self.refresh()
         if state_channels is None:
             state_channels = self.file.attrs["state"][:]

@@ -112,9 +112,12 @@ class DQBatch(Sequence):
         # maximum immediate cost.
         q_target[terminals.ravel() == 1] = 1
 
+        print(">>> qtargets after scaling and setting terminals", q_target)
+
+
         # Clamp down q values given their minimum value and clip values to
         # within sigmoid bounds to prevent saturation (Hafner).
-        q_target = np.clip((q_target - q_target.min()) + 0.05, 0.05, 0.95)
+        q_target = np.clip((q_target - q_target.min()) + 0.005, 0.005, 0.995)
 
         # qs[costs.ravel() == 0] = 0.05
 
@@ -175,6 +178,7 @@ class DQBatch(Sequence):
             t = t[np.arange(len(t)), argmin_a.astype(np.int32), None]
         if self.prioritized:
             return sa, t, w
+        
         return sa, t
 
     @staticmethod
@@ -477,6 +481,7 @@ class NFQ(Controller):
                 individual_meta[f"{channel}_{key}"] = value.item()
 
         mapping = dict(zip(self.action_channels, action))
+        
         return self.action_type(mapping, additional_data=individual_meta)
 
     def get_actions(
