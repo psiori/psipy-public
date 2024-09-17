@@ -772,10 +772,18 @@ class Batch(KSequence):
             self._caches = dict()
         episodes = list(episodes)
         assert all(e.lookback == self.lookback for e in episodes)
-        # Prepend the episodes
-        episodes.extend(self._episodes)
-        self._episodes = episodes
-        # self._episodes.extend(episodes)
+
+        #SL going back to the original code extending the episodes to the end of the existing ones
+        #SL because that allows a user to find the latest episode at the end of the list.
+        #SL I am assuming there was a reason to prepent and replace the existing episodes (thread safety?)
+        #SL but since there was no comment here detailing the decision going from extending to prepending,
+        #SL I changed it back to prepending. If something breaks, and you need to prepend (again),
+        #SL leave a comment here explaining why prepending is necessary. 
+        
+        ## Prepend the episodes
+        #episodes.extend(self._episodes)
+        #self._episodes = episodes
+        self._episodes.extend(episodes)
         LOG.info(f"Batch now contains {len(self._episodes)} episodes.")
         # Regenerate the minibatch indices
         self._initialize()

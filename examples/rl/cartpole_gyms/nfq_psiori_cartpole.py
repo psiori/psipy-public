@@ -8,6 +8,7 @@ from matplotlib import pyplot as plt
 from numpy import cast
 import tensorflow as tf
 from tensorflow.keras import layers as tfkl
+import numpy as np
 
 from psipy.rl.controllers.nfq import NFQ
 from psipy.rl.io.batch import Batch, Episode
@@ -36,7 +37,7 @@ def make_model(n_inputs, n_outputs, lookback):
 
 
 # Create some placeholders so lines don't get too long
-plant = CartPole()  # note: this is instantiated!
+plant = CartPole(x_threshold=3.6)  # note: this is instantiated!
 ActionType = CartPoleBangAction
 StateType = CartPoleState
 
@@ -46,6 +47,7 @@ def plot_swingup_state_history(
     episode: Optional[Episode],
     plant: Optional[CartPole] = None,
     filename: Optional[str] = None,
+    episode_num: Optional[int] = None,
 ) -> None:
     """Creates a plot that details the controller behavior.
 
@@ -76,48 +78,97 @@ def plot_swingup_state_history(
     a = episode._actions[:, 0]
     cost = episode.costs
         
+    figure = plt.figure(0,  figsize=(10, 8))
+    figure.clear()
 
-    fig, axs = plt.subplots(5, figsize=(10, 8))
-    axs[0].plot(x, label="cart_position")
-    axs[0].set_title("cart_position")
-    axs[0].set_ylabel("Position")
-    axs[0].legend()
+    axes = figure.subplots(5)
 
-    axs[1].plot(pole_cosine, label="pole_angle")
-    axs[1].axhline(0, color="grey", linestyle=":", label="target")
-    axs[1].set_title("Pole Cosine")
-#    axs[1].set_ylim((-1.0, 1,0))
-    #axs[1].set_ylabel("Angle")
-    axs[1].legend()
+    axes[0].plot(x, label="cart_position")
+    axes[0].set_title("cart_position")
+    axes[0].set_ylabel("Position")
+    axes[0].legend()
 
-    axs[2].plot(td, label="pole_velocity")
-    axs[2].set_title("pole_velocity")
-    axs[2].set_ylabel("Angular Vel")
-    axs[2].legend()
+    axes[1].plot(pole_cosine, label="cos")
+    axes[1].plot(pole_sine, label="sin")
+    axes[1].axhline(0, color="grey", linestyle=":", label="target")
+    axes[1].set_title("Angle")
+#   axes[1].set_ylim((-1.0, 1,0))
+    #axes[1].set_ylabel("Angle")
+    axes[1].legend()
 
-    axs[3].plot(a, label="Action")
-    axs[3].axhline(0, color="grey", linestyle=":")
-    axs[3].set_title("Control")
-    axs[3].set_ylabel("Velocity")
-    axs[3].legend(loc="upper left")
- #   axs2b = axs[3].twinx()
- #   axs2b.plot(x_s, color="black", alpha=0.4, label="True Velocity")
- #   axs2b.set_ylabel("Steps/s")
- #   axs2b.legend(loc="upper right")
+    axes[2].plot(td, label="pole_velocity")
+    axes[2].set_title("pole_velocity")
+    axes[2].set_ylabel("Angular Vel")
+    axes[2].legend()
+
+    axes[3].plot(a, label="Action")
+    axes[3].axhline(0, color="grey", linestyle=":")
+    axes[3].set_title("Control")
+    axes[3].set_ylabel("Velocity")
+    axes[3].legend(loc="upper left")
+ #   axes2b = axs[3].twinx()
+ #   axes2b.plot(x_s, color="black", alpha=0.4, label="True Velocity")
+ #   axes2b.set_ylabel("Steps/s")
+ #   axes2b.legend(loc="upper right")
 
     if cost is not None:
-        axs[4].plot(cost, label="cost")
-        axs[4].set_title("cost")
-        axs[4].set_ylabel("cost")
-        axs[4].legend()
+        axes[4].plot(cost, label="cost")
+        axes[4].set_title("cost")
+        axes[4].set_ylabel("cost")
+        axes[4].legend()
 
-    plt.suptitle("NFQ Controller on Physical Swingup Model")
+    if episode_num is None:
+        figure.suptitle("NFQ Controller on Physical Swingup Model")
+    else:
+        figure.suptitle(f"NFQ Controller on Physical Swingup Model, Episode {episode_num}")
+    
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     if filename:
-        plt.savefig(filename)
-        plt.close()
+        figure.savefig(filename)
+        plt.close(figure)
     else:
-        plt.show()
+        figure.show()
+
+import numpy as np
+
+def plot_metrics(metrics, fig=None):
+    if fig is None:
+        fig = plt.figure(1,  figsize=(10, 8))
+    else:
+        fig.clear()
+
+    axs = fig.subplots(2)
+
+    window_size = 7
+
+    if window_size > len(metrics["avg_cost"]):
+        return
+    
+    # Calculate moving average and variance
+    avg_cost = np.array(metrics["avg_cost"])
+    moving_avg = np.convolve(avg_cost, np.ones(window_size)/window_size, mode='same')
+    
+    # Calculate moving variance
+    moving_var = np.convolve(avg_cost**2, np.ones(window_size)/window_size, mode='same') - moving_avg**2
+    moving_std = np.sqrt(moving_var)
+    
+    # Plot original data, moving average, and variance
+    x = range(len(avg_cost))
+    x_valid = x # range(window_size-1, len(avg_cost))
+    
+    axs[0].plot(x_valid, avg_cost, label="avg_cost", alpha=0.3, color='gray')
+    axs[0].plot(x_valid, moving_avg, label="moving average", color='blue')
+    axs[0].fill_between(x_valid, moving_avg - moving_std, moving_avg + moving_std, alpha=0.2, color='blue', label='±1 std dev')
+    
+    axs[0].set_title("Average Cost")
+    axs[0].set_ylabel("Cost per step")
+    axs[0].legend()
+
+    fig.show()
+
+    return fig
+    
+
 
 state_channels = [
     "cart_position",
@@ -147,13 +198,16 @@ nfq.epsilon = 0.2
 
 
 loop = Loop(plant, nfq, "simulated.cartpole.CartPole", sart_folder, render=True)
+eval_loop = Loop(plant, nfq, "simulated.cartpole.CartPole", f"{sart_folder}-eval", render=True)
 
 old_epsilon = nfq.epsilon
 nfq.epsilon = 1.0
 
-loop.run(1, max_episode_steps=200)
+loop.run(1, max_episode_steps=300)
 
 nfq.epsilon = old_epsilon
+
+metrics = { "total_cost": [], "avg_cost": [], "cycles_run": [], "wall_time_s": [] }
 
 # Load the collected data
 batch = Batch.from_hdf5(
@@ -163,17 +217,38 @@ batch = Batch.from_hdf5(
     control=nfq,
 )
 
+fig = None
+do_eval = True
 
 for i in range(200):
-    loop.run(1, max_episode_steps=200)
+    loop.run(1, max_episode_steps=300)
 
     batch.append_from_hdf5(sart_folder,
                            action_channels=["move_index",])
+    plot_swingup_state_history(batch._episodes[len(batch._episodes)-1], filename=f"swingup_latest_episode.png",
+                               episode_num=len(batch._episodes))
     
-    plot_swingup_state_history(batch._episodes[-1], filename=f"swingup_latest_episode.png")
-
+    print(">>> num episodes in batch: ", len(batch._episodes))
+    
     # Fit the normalizer
-    nfq.fit_normalizer(batch.observations) # , method="max")
+    if i % 10 == 0:
+        nfq.fit_normalizer(batch.observations) # , method="max")
+
+    if do_eval:
+        old_epsilon = nfq.epsilon
+        nfq.epsilon = 0.0
+        eval_loop.run(1, max_episode_steps=300)
+        nfq.epsilon = old_epsilon
+
+        episode_metrics = eval_loop.metrics[1] # only one episode was run
+
+        metrics["total_cost"].append(episode_metrics["total_cost"])
+        metrics["cycles_run"].append(episode_metrics["cycles_run"])
+        metrics["wall_time_s"].append(episode_metrics["wall_time_s"])
+        metrics["avg_cost"].append(episode_metrics["total_cost"] / episode_metrics["cycles_run"])
+
+        fig = plot_metrics(metrics, fig=fig)
+
 
     # Fit the controller
 #callback = PlottingCallback(
@@ -182,8 +257,8 @@ for i in range(200):
     try:
         nfq.fit(
             batch,
-            iterations=5,
-            epochs=10,
+            iterations=3,
+            epochs=8,
             minibatch_size=256,
             gamma=0.98,
             verbose=1,

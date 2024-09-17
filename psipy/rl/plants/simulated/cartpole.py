@@ -71,7 +71,7 @@ def make_default_cost_function(x_threshold: float = 2.4) -> Callable[[np.ndarray
     def cost_function(state: np.ndarray) -> np.ndarray:
         x, x_dot, theta, sintheta, costheta, theta_dot, move_ACT = state
 
-        cost = tanh2(theta, C=0.1, mu=0.05) / 100.0
+        cost = tanh2(theta, C=0.1, mu=0.05) / 10.0
 
         if (abs(x) >= x_threshold):
             cost = 1.0
