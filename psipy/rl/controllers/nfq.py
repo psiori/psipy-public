@@ -92,6 +92,23 @@ class DQBatch(Sequence):
 
         q_target = costs + gamma * qs * (1 - terminals)
 
+        #print(">>> immediate cost", costs)
+        print(">>> terminal", terminals)
+        #print(">>> q_target before scaling: ", q_target)
+
+
+        # CSV = CSV.append(pd.DataFrame({"A":[self.A], "B":[self.B], "outmin":[out_min], "outmax":[out_max]}))
+
+        # All terminals are bad terminals, as we are considering infinite
+        # horizon regulator problems only. Terminal states are states which
+        # the system may never reach, or it might break. Terminal states can
+        # not be left anymore, therefore they have no future cost, but only
+        # maximum immediate cost.
+        q_target[terminals.ravel() == 1] = 1
+
+        print(">>> qtargets after setting terminals", q_target)
+
+
         if scale:
             # Update the scaling parameters based on the max and min output of the network, and
             # the max and min possible outputs of a sigmoid (last layer's activation).
@@ -103,21 +120,13 @@ class DQBatch(Sequence):
             # of costs incurred.
             q_target = self.scale(q_target, self.A, self.B)
 
-        # CSV = CSV.append(pd.DataFrame({"A":[self.A], "B":[self.B], "outmin":[out_min], "outmax":[out_max]}))
-
-        # All terminals are bad terminals, as we are considering infinite
-        # horizon regulator problems only. Terminal states are states which
-        # the system may never reach, or it might break. Terminal states can
-        # not be left anymore, therefore they have no future cost, but only
-        # maximum immediate cost.
-        q_target[terminals.ravel() == 1] = 1
-
-        print(">>> qtargets after scaling and setting terminals", q_target)
-
 
         # Clamp down q values given their minimum value and clip values to
         # within sigmoid bounds to prevent saturation (Hafner).
         q_target = np.clip((q_target - q_target.min()) + 0.005, 0.005, 0.995)
+
+        print(">>> qtargets after scaling and setting terminals and clipping", q_target)
+
 
         # qs[costs.ravel() == 0] = 0.05
 
