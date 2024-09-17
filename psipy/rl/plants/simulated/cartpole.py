@@ -135,8 +135,9 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
     ):
         if cost_function is None:
             cost_function = make_default_cost_function(x_threshold)
-
-        super().__init__(cost_function)
+            print("CartPole is using default cost function")
+      
+        super().__init__(cost_function=cost_function)
 
         self.x_threshold = x_threshold
         self.state_type = state_type

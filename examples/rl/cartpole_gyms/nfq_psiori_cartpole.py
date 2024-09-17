@@ -2,7 +2,7 @@
 """
 
 import sys
-from typing import Optional
+from typing import Callable, Optional
 
 from matplotlib import pyplot as plt
 from numpy import cast
@@ -36,8 +36,44 @@ def make_model(n_inputs, n_outputs, lookback):
     return tf.keras.Model(inp, net)
 
 
-# Create some placeholders so lines don't get too long
-plant = CartPole(x_threshold=3.6)  # note: this is instantiated!
+CART_POSITION_CHANNEL_IDX = 0
+COSINE_CHANNEL_IDX = 4
+
+x_threshold=3.6
+
+def make_cosine_cost_func(x_boundary: float=2.4) -> Callable[[np.ndarray], np.ndarray]:
+    def cosine_costfunc(states: np.ndarray) -> np.ndarray:
+
+        if np.ndim(states) == 1:
+            #print("WARNING: states is a 1D list. This should not happen.")
+            position = states[CART_POSITION_CHANNEL_IDX]
+            cosine = states[COSINE_CHANNEL_IDX]
+
+            if abs(position) >= x_boundary:
+                cost = 1.0
+            elif abs(position) >= x_boundary*0.9:
+                cost = 0.2
+            else:
+                cost = (1.0-(cosine+1.0)/2.0) / 100.0
+            #print(cost)
+            return cost
+        
+        position = states[:, CART_POSITION_CHANNEL_IDX]
+        cosine = states[:, COSINE_CHANNEL_IDX]
+
+        costs = (1.0-(cosine+1.0)/2.0) / 100.0  
+        costs[abs(position) >= x_boundary*0.9] = 0.2
+        costs[abs(position) >= x_boundary] = 1.0
+
+        #print(costs)
+
+        return costs
+    return cosine_costfunc
+
+
+cosine_cost_func = make_cosine_cost_func(x_boundary=x_threshold)
+
+plant = CartPole(x_threshold=x_threshold, cost_function=cosine_cost_func)  # note: this is instantiated!
 ActionType = CartPoleBangAction
 StateType = CartPoleState
 
@@ -72,8 +108,8 @@ def plot_swingup_state_history(
     x = episode.observations[:, 0]
     x_s = episode.observations[:, 1]
     t = episode.observations[:, 2]
-    pole_cosine = episode.observations[:, 3]
-    pole_sine = episode.observations[:, 4]
+    pole_sine = episode.observations[:, 3]
+    pole_cosine = episode.observations[:, 4]
     td = episode.observations[:, 5]
     a = episode._actions[:, 0]
     cost = episode.costs
@@ -132,10 +168,10 @@ def plot_swingup_state_history(
 import numpy as np
 
 def plot_metrics(metrics, fig=None):
-    if fig is None:
-        fig = plt.figure(1,  figsize=(10, 8))
-    else:
+    if fig is not None:
         fig.clear()
+    else:
+        fig = plt.figure(1,  figsize=(10, 8))
 
     axs = fig.subplots(2)
 
@@ -143,6 +179,8 @@ def plot_metrics(metrics, fig=None):
 
     if window_size > len(metrics["avg_cost"]):
         return
+    
+    #print(">>> metrics['avg_cost']", metrics["avg_cost"])
     
     # Calculate moving average and variance
     avg_cost = np.array(metrics["avg_cost"])
@@ -164,7 +202,7 @@ def plot_metrics(metrics, fig=None):
     axs[0].set_ylabel("Cost per step")
     axs[0].legend()
 
-    fig.show()
+    fig.canvas.draw()
 
     return fig
     
@@ -197,7 +235,7 @@ nfq.epsilon = 0.2
 # Collect initial data with a discrete random action controller
 
 
-loop = Loop(plant, nfq, "simulated.cartpole.CartPole", sart_folder, render=True)
+loop = Loop(plant, nfq, "simulated.cartpole.CartPole", sart_folder, render=False)
 eval_loop = Loop(plant, nfq, "simulated.cartpole.CartPole", f"{sart_folder}-eval", render=True)
 
 old_epsilon = nfq.epsilon
@@ -221,23 +259,24 @@ fig = None
 do_eval = True
 
 for i in range(200):
-    loop.run(1, max_episode_steps=300)
+    loop.run(1, max_episode_steps=500)
 
     batch.append_from_hdf5(sart_folder,
                            action_channels=["move_index",])
-    plot_swingup_state_history(batch._episodes[len(batch._episodes)-1], filename=f"swingup_latest_episode.png",
+    plot_swingup_state_history(batch._episodes[len(batch._episodes)-1],
+                               filename=f"swingup_latest_episode-{i}.png",
                                episode_num=len(batch._episodes))
     
     print(">>> num episodes in batch: ", len(batch._episodes))
     
     # Fit the normalizer
-    if i % 10 == 0:
+    if (i < 10 or i % 10 == 0) and i < 100:
         nfq.fit_normalizer(batch.observations) # , method="max")
 
     if do_eval:
         old_epsilon = nfq.epsilon
         nfq.epsilon = 0.0
-        eval_loop.run(1, max_episode_steps=300)
+        eval_loop.run(2, max_episode_steps=600)
         nfq.epsilon = old_epsilon
 
         episode_metrics = eval_loop.metrics[1] # only one episode was run
@@ -248,6 +287,9 @@ for i in range(200):
         metrics["avg_cost"].append(episode_metrics["total_cost"] / episode_metrics["cycles_run"])
 
         fig = plot_metrics(metrics, fig=fig)
+        if fig is not None:
+            fig.show()
+
 
 
     # Fit the controller
@@ -257,8 +299,9 @@ for i in range(200):
     try:
         nfq.fit(
             batch,
-            iterations=3,
-            epochs=8,
+            costfunc=cosine_cost_func,
+            iterations=5,
+            epochs=10,
             minibatch_size=256,
             gamma=0.98,
             verbose=1,

@@ -46,6 +46,7 @@ class DQBatch(Sequence):
         prioritized: If the batch is sampled according to transition priority or not.
         scale: Whether or not to linearly scale the q targets into the range [0,1]
                Only do this when training on a single batch, not growing!
+        clamp_terminal_costs: Whether to clamp the costs for terminal states
     """
 
     def __init__(
@@ -60,13 +61,16 @@ class DQBatch(Sequence):
         doubleq: bool = False,
         prioritized: bool = False,
         scale: bool = False,
+        clamp_terminal_costs: bool = False,
+        clip_qtargets: bool = False,
     ):
         global CSV
         self.batch = batch
         self.act_model = act_model
         self.prioritized = prioritized
         self.doubleq = doubleq
-
+        self.clamp_terminal_costs = clamp_terminal_costs
+        self.clip_qtargets = clip_qtargets
         # Prepare the Batch for doing some computations on all its sorted values.
         minibatch_size = batch.minibatch_size
         self.batch.set_minibatch_size(-1).sort()
@@ -92,21 +96,20 @@ class DQBatch(Sequence):
 
         q_target = costs + gamma * qs * (1 - terminals)
 
-        #print(">>> immediate cost", costs)
-        print(">>> terminal", terminals)
-        #print(">>> q_target before scaling: ", q_target)
-
-
         # CSV = CSV.append(pd.DataFrame({"A":[self.A], "B":[self.B], "outmin":[out_min], "outmax":[out_max]}))
 
-        # All terminals are bad terminals, as we are considering infinite
+        # All terminals are bad terminals, as, for now, we are considering infinite
         # horizon regulator problems only. Terminal states are states which
         # the system may never reach, or it might break. Terminal states can
         # not be left anymore, therefore they have no future cost, but only
         # maximum immediate cost.
-        q_target[terminals.ravel() == 1] = 1
+        if self.clamp_terminal_costs:
+            q_target[terminals.ravel() == 1] = 1
 
-        print(">>> qtargets after setting terminals", q_target)
+        #print(">>> immediate cost", costs)
+        #print(">>> terminal", terminals)
+        print(">>> q_target before scaling: ", q_target)
+        print(f"qtargets n: { len(q_target) } max: {q_target.max()} min: {q_target.min()}")
 
 
         if scale:
@@ -123,12 +126,12 @@ class DQBatch(Sequence):
 
         # Clamp down q values given their minimum value and clip values to
         # within sigmoid bounds to prevent saturation (Hafner).
-        q_target = np.clip((q_target - q_target.min()) + 0.005, 0.005, 0.995)
+        if self.clip_qtargets: 
+            q_target = np.clip((q_target - q_target.min()) + 0.005, 0.005, 0.995)
+            # qs[costs.ravel() == 0] = 0.05  #SL in all versions I've seen, this was commented out
 
-        print(">>> qtargets after scaling and setting terminals and clipping", q_target)
-
-
-        # qs[costs.ravel() == 0] = 0.05
+        print(f"A={self.A} B={self.B}")
+        # print(">>> qtargets after scaling and setting terminals and clipping", q_target)
 
         # Store the q target in the batch; it is altered below if
         # using a prioritized double NFQ in order to reduce dims
@@ -407,6 +410,7 @@ class NFQ(Controller):
                      sampling.
         scale: Whether or not to linearly scale the q targets into the range [0,1]
                Only do this when training on a single batch, not growing!
+        clamp_terminal_costs: Whether to clamp the costs for terminal states
         **kwargs: Further keyword arguments for :class:`Controller`.
     """
 
@@ -418,9 +422,11 @@ class NFQ(Controller):
         control_pairs: Optional[Tuple[Tuple[str, str], ...]] = None,
         num_repeat: int = 0,
         doubleq: bool = False,
-        optimizer: Union[str, tf.keras.optimizers.Optimizer] = "RMSProp",
+        optimizer: Union[str, tf.keras.optimizers.Optimizer] = "Adam",
         prioritized: bool = False,
         scale: bool = False,
+        clamp_terminal_costs: bool = False,
+        clip_qtargets: bool = False,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -435,6 +441,8 @@ class NFQ(Controller):
         self.doubleq = doubleq
         self.prioritized = prioritized
         self.scale = scale
+        self.clamp_terminal_costs = clamp_terminal_costs
+        self.clip_qtargets = clip_qtargets
         self.idoe = self.action_type.dtype == "continuous"
         if self.idoe:
             LOG.info("Running NFQ in I-DOE mode.")
@@ -624,6 +632,9 @@ class NFQ(Controller):
 
         def max_q(y_true, y_preds):
             return tf.reduce_max(y_preds)
+        
+        def avg_qdelta(y_true, y_preds):
+            return tf.reduce_mean(tf.abs(y_preds-y_true))  # mean absolute error, easier to interpret than loss/MSE
 
         # Model used for training. Gradient decent through a single output unit which
         # is picked by `act_in` -- the action previously executed in state.
@@ -631,7 +642,7 @@ class NFQ(Controller):
         train_model.compile(
             optimizer=self._optimizer,
             loss="MSE",
-            metrics=[min_q, avg_q, max_q],  # median_q
+            metrics=[avg_qdelta, min_q, avg_q, max_q],  # median_q
         )
         # Workaround for `AssertionError`s seen during multi-threaded fit.
         # NOTE: No longer needed with tf2.2+?
@@ -699,6 +710,8 @@ class NFQ(Controller):
                 self.doubleq,
                 self.prioritized,
                 self.scale,
+                clamp_terminal_costs=self.clamp_terminal_costs,
+                clip_qtargets=self.clip_qtargets,
             )
             if self.scale:
                 self.A, self.B = sequence.get_A_B()
