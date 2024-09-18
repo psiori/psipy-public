@@ -52,7 +52,7 @@ def make_cosine_cost_func(x_boundary: float=2.4) -> Callable[[np.ndarray], np.nd
             if abs(position) >= x_boundary:
                 cost = 1.0
             elif abs(position) >= x_boundary*0.9:
-                cost = 0.2
+                cost = 0.1
             else:
                 cost = (1.0-(cosine+1.0)/2.0) / 100.0
             #print(cost)
@@ -62,7 +62,7 @@ def make_cosine_cost_func(x_boundary: float=2.4) -> Callable[[np.ndarray], np.nd
         cosine = states[:, COSINE_CHANNEL_IDX]
 
         costs = (1.0-(cosine+1.0)/2.0) / 100.0  
-        costs[abs(position) >= x_boundary*0.9] = 0.2
+        costs[abs(position) >= x_boundary*0.9] = 0.1
         costs[abs(position) >= x_boundary] = 1.0
 
         #print(costs)
@@ -70,10 +70,64 @@ def make_cosine_cost_func(x_boundary: float=2.4) -> Callable[[np.ndarray], np.nd
         return costs
     return cosine_costfunc
 
+def make_sparse_cost_func(x_boundary: float=2.4) -> Callable[[np.ndarray], np.ndarray]:
+    def sparse_costfunc(states: np.ndarray) -> np.ndarray:
+        # unfortunately, we need to provide a vectorized version (for the batch
+        # processing in the controller) as well as a single state verison (for the
+        # plants).
+
+        if np.ndim(states) == 1:  # this is the version for a single state
+            #print("WARNING: states is a 1D list. This should not happen.")
+            position = states[CART_POSITION_CHANNEL_IDX]
+            cosine = states[COSINE_CHANNEL_IDX]
+
+            if abs(position) >= x_boundary:
+                cost = 1.0
+            elif abs(position) >= x_boundary*0.9:
+                cost = 0.1
+            elif abs(position) <= x_boundary*0.2:
+                cost = (1.0-(cosine+1.0)/2.0) / 100.0
+            else:
+                cost = 0.01
+            #print(cost)
+            return cost
+        
+        position = states[:, CART_POSITION_CHANNEL_IDX]
+        cosine = states[:, COSINE_CHANNEL_IDX]
+
+        costs = (1.0-(cosine+1.0)/2.0) / 100.0  # can only get lower costs in center of x axis
+        costs[abs(position) >= x_boundary*0.2] = 0.01  # standard step costs 
+        costs[abs(position) >= x_boundary*0.9] = 0.1   # 10x step costs close to x_boundary
+        costs[abs(position) >= x_boundary] = 1.0       # 100x step costs in terminal states
+
+        # ATTENTION, a word regarding the choice of terminal costs and "step costs":
+        # the relation of terminal costs to step costs depends on the gamma value.
+        # with gamma=0.98, the geometric sequence  sum(0.98^n) converges to 50 with n
+        # going to infinity (infinite lookahead), thus 100x times the cost of an indiviual
+        # step seems reasonable and twice as much, as the discounted future step costs can 
+        # cause (50x the step cost). for higher gammas closer to one, the terminal costs should
+        # be higher, to prevent a terminal state's costs being lower than continuing to acting
+        # within the "bounds" (aka non-terminal states). If you see your agent learning to 
+        # leave the bounds as quickly as possible, its likely that your terminal costs are too low
+        # or your treatment of the terminal transition is not correct (e.g. not doing a TD update
+        # on these transitions at all, wrong scaling, etc.). We have seen both types of errors
+        # (terminal costs to low, wrong handling of terminal transitions) in our own code as
+        # well as our students code, but also in "prominent" projects and papers.
+
+        #print(costs)
+
+        return costs
+    return sparse_costfunc
+
 
 cosine_cost_func = make_cosine_cost_func(x_boundary=x_threshold)
+sparse_cost_func = make_sparse_cost_func(x_boundary=x_threshold)
 
-plant = CartPole(x_threshold=x_threshold, cost_function=cosine_cost_func)  # note: this is instantiated!
+used_cost_func = sparse_cost_func
+
+print(">>> ATTENTION: chosen cost function: ", used_cost_func)
+
+plant = CartPole(x_threshold=x_threshold, cost_function=used_cost_func)  # note: this is instantiated!
 ActionType = CartPoleBangAction
 StateType = CartPoleState
 
@@ -230,7 +284,7 @@ nfq = NFQ(
     lookback=lookback,
     scale=True,
 )
-nfq.epsilon = 0.2
+nfq.epsilon = 0.1
 
 # Collect initial data with a discrete random action controller
 
@@ -248,12 +302,12 @@ nfq.epsilon = old_epsilon
 metrics = { "total_cost": [], "avg_cost": [], "cycles_run": [], "wall_time_s": [] }
 
 # Load the collected data
-batch = Batch.from_hdf5(
-    sart_folder,
-    action_channels=["move_index",],
-    lookback=lookback,
-    control=nfq,
-)
+#batch = Batch.from_hdf5(
+#    sart_folder,
+#    action_channels=["move_index",],
+#    lookback=lookback,
+#    control=nfq,
+#)
 
 fig = None
 do_eval = True
@@ -261,10 +315,18 @@ do_eval = True
 for i in range(200):
     loop.run(1, max_episode_steps=500)
 
-    batch.append_from_hdf5(sart_folder,
-                           action_channels=["move_index",])
+    #batch.append_from_hdf5(sart_folder,
+    #                       action_channels=["move_index",])
+
+    batch = Batch.from_hdf5(
+        sart_folder,
+        action_channels=["move_index",],
+        lookback=lookback,
+        control=nfq,
+    )
+
     plot_swingup_state_history(batch._episodes[len(batch._episodes)-1],
-                               filename=f"swingup_latest_episode-{i}.png",
+                               filename=f"swingup_latest_episode-{len(batch._episodes)}.png",
                                episode_num=len(batch._episodes))
     
     print(">>> num episodes in batch: ", len(batch._episodes))
@@ -299,7 +361,7 @@ for i in range(200):
     try:
         nfq.fit(
             batch,
-            costfunc=cosine_cost_func,
+            costfunc=used_cost_func,
             iterations=5,
             epochs=10,
             minibatch_size=256,
