@@ -9,6 +9,43 @@
 In order to connect, you need to follow the instructions in :class:`SwingupPlant`.
 """
 
+
+"""
+==========
+NOTES (SL)
+==========
+
+Things to check:
++ immediate costs:  ---> fixed (see comments SL in costfunction)
+++ "0" when up
+++ "1" when down
+-- large enough multiple in negative terminal state (e.g. 1000)
+(+) zero action is real zero ---> presently 150 is neutral action! (SL)
+- correct handling of normalization on all axes including immediate reward and q target
+- * immediate reward of terminal state is used
+- * update in NFQ on terminal states is correct
+- goal state is NOT a terminal state
+- * state information to controller is correct (correct channels, plausible values)
+- * lookahead does work properly (include n last states PLUS actions)
++ end state of transition at t is the exact same as start state of transtion t+1
+(*) cycle time works properly and does not jitter (much)
+- we cause no delay of actions in busy, control and zmq pipes (crane OI learning to better check...)
+- repeat estimate of overall delay
+- if using mini batches, sample order is randomized
+* terminal due to bad angle??? --> what is this?
+- plot q, close plot
+
+
+Improve:
+- busy has proper logging
+- busy gets (optional) more useful terminal output (like robotcontrol?)
+- control and plant really check all values for the assumption and complain (optional: stop?) if violated
+- check everything back into the public repo and decide about pact / busy (extract, public?)
+- discuss repos, enforce merging, deviation of public repo & actions / control / plant issues with Alex, collect opinion before changing
+- handle overflow correctly (see SL comments in RL plant)
+"""
+
+
 import glob
 import time
 
@@ -22,24 +59,29 @@ from psipy.rl.visualization.plotting_callback import PlottingCallback
 from tensorflow.keras import layers as tfkl
 
 from cartpole_control.plant.cartpole_plant import (
-    SwingupDiscretizedAction,
+#SL   SwingupDiscretizedAction,
+    SwingupContinuousDiscreteAction,
     SwingupPlant,
     SwingupState,
+    plot_swingup_state_history
 )
 
 # Define where we want to save our SART files
-sart_folder = "swingup4-retrain"
+sart_folder = "SL-swingup"
 net_name = sart_folder + "/latest_net.zip"
 
 STATE_CHANNELS = (
     "cart_position",
     "cart_velocity",
-    "pole_angle",
-    "pole_velocity",
+#SL    "pole_angle",
+    "pole_sine",
+    "pole_cosine",
+#    "pole_velocity",
     "direction_ACT",
 )
-THETA_CHANNEL_IDX = STATE_CHANNELS.index("pole_angle")
-EPS_STEPS = 200
+THETA_CHANNEL_IDX = STATE_CHANNELS.index("pole_cosine") #SL pole_angle
+CART_POSITION_CHANNEL_IDX = STATE_CHANNELS.index("cart_position") #SL pole_angle
+EPS_STEPS = 100 # 400
 
 
 # Create a model based on state, action shapes and lookback
@@ -48,8 +90,8 @@ def make_model_nfqs(n_inputs, n_outputs, lookback):
     act = tfkl.Input((1,), name="action")
     net = tfkl.Flatten()(inp)
     net = tfkl.Concatenate()([net, act])
-    net = tfkl.Dense(20, activation="tanh")(net)
-    net = tfkl.Dense(20, activation="tanh")(net)
+    net = tfkl.Dense(40, activation="tanh")(net)
+    net = tfkl.Dense(40, activation="tanh")(net)
     net = tfkl.Dense(n_outputs, activation="sigmoid")(net)
     return tf.keras.Model([inp, act], net)
 
@@ -58,22 +100,38 @@ def make_model_nfqs(n_inputs, n_outputs, lookback):
 def make_model(n_inputs, n_outputs, lookback):
     inp = tfkl.Input((n_inputs, lookback), name="state")
     net = tfkl.Flatten()(inp)
-    net = tfkl.Dense(30, activation="tanh")(net)
-    net = tfkl.Dense(30, activation="tanh")(net)
-    net = tfkl.Dense(n_outputs, activation="sigmoid")(net)
+    net = tfkl.Dense(256, activation="relu")(net)
+    net = tfkl.Dense(256, activation="relu")(net)
+    net = tfkl.Dense(100, activation="tanh")(net)
+    net = tfkl.Dense(n_outputs, activation="sigmoid")(net)  # sigmoid
     return tf.keras.Model(inp, net)
 
 
 # Define a custom cost function to change the inbuilt costs
 def costfunc(states: np.ndarray) -> np.ndarray:
-    position = states[:, 0]
-    theta = states[:, THETA_CHANNEL_IDX]
-    theta_speed = states[:, THETA_CHANNEL_IDX + 1]
+    position = states[:, CART_POSITION_CHANNEL_IDX] # SL TODO: change, don't assume index 0 for position
+    theta = states[:, THETA_CHANNEL_IDX]             # SL TODO: if using cosine, needs to change 
+    #theta_speed = states[:, THETA_CHANNEL_IDX + 2]   
 
-    costs = tanh2(theta, C=0.01, mu=0.5)
-    costs += tanh2(theta_speed, C=0.01, mu=2.5)
-    costs[position < SwingupPlant.LEFT_SIDE + 20] = 1
-    costs[position > SwingupPlant.RIGHT_SIDE - 20] = 1
+    costs = (1.0-(theta+1.0)/2.0) / 100.0  #SL orig: tanh2(theta, C=0.01, mu=0.5)
+                              # why this: gives 1 when standing up and 0 when hanging down (bc theta..)  -- probably divided to make sure its smaller than terminal costs of failure
+    #costs += tanh2(theta_speed, C=0.01, mu=2.5)
+
+    #print(f"#### theta: { theta } costs before bounds: { costs }")
+    #print(f"--------------- size costs, position { costs.size }, { position.size }")
+
+    # TERMINAL COSTS FOR NFQ: ARE BASICALLY IGNORED; STATE NEEDS TO HAVE "TERMINAL=True" SET, IN WHICH CASE NFQ IMPLEMENTATION WILL SET EXPECTED COST TO 1 :(
+
+    # PROBLEM: for terminals, we need to check raw, unmoved position (no moved zero), but we can't compute here and lack information about the zero shift. Thus, use the lEFT_SIDE, because we know, in default param setup thats the zero. Also problem: if we move zero, MDP is not markov, because we cant derive positions of bounds from state :(
+
+    if position.size > 1:  # SL: original version did not work if passed single states
+        costs[position + SwingupPlant.LEFT_SIDE <= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET] = 1.0
+        costs[position + SwingupPlant.LEFT_SIDE >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET] = 1.0
+    elif position.size == 1:
+        print (f"true_position { position[0] + SwingupPlant.LEFT_SIDE }")
+        if (position[0] + SwingupPlant.LEFT_SIDE<= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET or position[0] >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET):
+            costs[0] = 1.0
+    #print(costs)
 
     return costs
 
@@ -138,11 +196,12 @@ def create_fake_episodes(folder: str, lookback: int):
     # yield Episode(o, a, t, c, **kwargs)
 
 
-plant = SwingupPlant("5555", speed_value=800, speed_value2=400)
-ActionType = SwingupDiscretizedAction
+plant = SwingupPlant(hilscher_port="5555", cost_func=costfunc, sway_start=False)#, 
+		   #  speed_values=(800, 400)) #SL speed_value1, speed_value2
+ActionType = SwingupContinuousDiscreteAction # SL
 StateType = SwingupState
-lookback = 2
-gamma = 0.999
+lookback = 4
+gamma = 0.98
 max_episode_length = EPS_STEPS
 
 load_network = False
@@ -159,7 +218,8 @@ if not load_network:
         action=ActionType,
         action_values=ActionType.legal_values[0],
         lookback=lookback,
-        num_repeat=5,
+     #   num_repeat=5,
+        scale=True,
     )
 else:
     nfq = NFQ.load(net_name, custom_objects=[ActionType])
@@ -217,22 +277,33 @@ epsilon = nfq.epsilon
 pp = LoopPrettyPrinter(costfunc)
 
 for cycle in range(0, cycles):
-    print("Cycle:", cycle + 1)
-    if cycle % 10 == 0 and cycle != 0:
+    num_cycles_rand_start = 0
+
+    print("Cycle:", cycle)
+    if cycle % 10 == 0 and cycle > num_cycles_rand_start:
         nfq.epsilon = 0.0
+    elif cycle < num_cycles_rand_start:
+        nfq.epsilon = 0.8
     else:
-        epsilon = max(0.01, epsilon - 0.05)
+        epsilon = max(0.2, epsilon - 0.05)
         nfq.epsilon = epsilon
+
     print("NFQ Epsilon:", nfq.epsilon)
-    time.sleep(1)
+    # time.sleep(1)
 
     # Collect data
     for _ in range(1):
         loop.run_episode(cycle + 1, max_steps=max_episode_length, pretty_printer=pp)
+
+    plot_swingup_state_history(plant=plant, filename="episode.eps")
+
+    if cycle < num_cycles_rand_start:
+        continue   # don't fit yet
+
     # If the last episode ended in the goal state, save it for later viewing
-    if plant.is_solved:
-        save_name = f"POTENTIAL-{cycle}-swingup-hardware-nfq-model.zip"
-    nfq.save(net_name)
+    #if plant.is_solved:
+    #    save_name = f"POTENTIAL-{cycle}-swingup-hardware-nfq-model.zip"
+    #nfq.save(net_name)
 
     # Load the collected data
     batch = Batch.from_hdf5(
@@ -246,7 +317,18 @@ for cycle in range(0, cycles):
     # batch.append(fakes)
 
     # Fit the normalizer
-    nfq.fit_normalizer(batch.observations, method="meanstd")
+   # if cycle < 40 and cycle % 5 == 0:    # at some point stop normalizing because we dont throw away the network and dont want the data to "move under the network"
+
+    iterations = 2
+
+
+    if cycle == num_cycles_rand_start:
+        nfq.fit_normalizer(batch.observations, method="meanstd")
+        
+
+    if cycle % 10 == 0 and cycle > 0:   
+        nfq.fit_normalizer(batch.observations, method="meanstd")
+        iterations = 50
 
     batch_size = max(
         256 * ((cycle // 20) + 1), batch.num_samples // 10
@@ -257,12 +339,13 @@ for cycle in range(0, cycles):
     nfq.fit(
         batch,
         costfunc=costfunc,
-        iterations=5,
-        epochs=5,  # 12,
-        minibatch_size=batch_size,
+        iterations=5, # iterations,
+        epochs= 10,
+        minibatch_size=256, #batch_size,
         gamma=gamma,
         callbacks=[callback],
-        verbose=0,
+        verbose=1,
     )
 
 print("Elapsed time:", time.time() - start_time)
+

@@ -37,12 +37,19 @@ __all__ = [
 LOG = logging.getLogger(__name__)
 
 
-def angle_slope(a, b):
-    diff = a - b
-    sign = np.sign(diff)
-    if sign < 0:
-        diff *= -1
-    return sign * min(diff, 2 * np.pi - diff)
+# def angle_slope(a, b):
+#     diff = a - b
+#     sign = np.sign(diff)
+#     if sign < 0:
+#         diff *= -1
+#     return sign * min(diff, 2 * np.pi - diff)
+
+
+# def angle_slope(a, b):
+#     return np.tan(b - a)
+
+def angle_slope(end, start):
+    return np.arctan2(np.sin(start - end), np.cos(start - end))
 
 
 class SwingupAction(Action):
@@ -68,22 +75,28 @@ class SwingupContinuousDiscreteAction(Action):
     dtype = "discrete"
     channels = ("direction",)
     legal_values = (
-        (
-            -100,
-            100,
-            0,
-            400,
-            -400,
-            800,
-            -800,
-            1000,
-            -1000,
-            200,
-            -200,
-            20,
-            -20,
-            600,
-            -600,
+        (  # SL: problem: 0 is not zero :-()  present zero is near 150 (oh: due to operator! )
+            #150,
+            #-100,
+            #100,
+            #200,
+            #-200,
+            #300,
+            #-300,
+            #400,
+            #-400,
+            # 500,
+            #-500,
+            # 600,
+            # -600,
+            # 700,
+            -500,
+            500,
+            #-700,
+            # 900,
+            # -900,
+            # 1000,
+            # -1000,
         ),
     )
 
@@ -96,12 +109,16 @@ class SwingupContinuousAction(Action):
 
 class SwingupState(State):
     _channels = (
-        "cart_position",
+        "cart_position",     #TODO: is goal position
         "cart_velocity",
         "pole_sine",
         "pole_cosine",
         "pole_velocity",
         "pole_angle",
+#        "true_position",
+        "dist_left",
+        "dist_right",
+#       "operator",
         "direction_ACT",
     )
 
@@ -156,6 +173,8 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         backward_compatible: Use a faulty continuous speed calculation for models that
                              split the speed setting and execution python side. These
                              models essentially have a half as fast action delay.
+        sway_start: Start with the cart offc enter so that it has to move to the center
+                       on its own.
         cost_func: If provided, the cost of the current state is sent over ZMQ to the
                    C side.
         controller: If provided, the Q value for the current state/action pair is sent
@@ -171,13 +190,13 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
     RIGHT_SIDE: int = 6755
     CENTER: int = (RIGHT_SIDE - LEFT_SIDE) // 2
     TICKS_PER_CIRCLE: int = 600
-    TERMINAL_LEFT_OFFSET: int = 100
-    TERMINAL_RIGHT_OFFSET: int = 300
+    TERMINAL_LEFT_OFFSET: int = 300
+    TERMINAL_RIGHT_OFFSET: int = 200
 
     # Minimum time to wait in seconds between performing an action and receiving
     # a consecutive state. Allows the physical model to actually perform a
     # movement in reaction to a newly set velocity.
-    ACTION_DELAY: ClassVar[float] = 0.04
+    ACTION_DELAY: ClassVar[float] = 0.05 #TODO
 
     def __init__(
         self,
@@ -185,20 +204,24 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         hilscher_port: int = 5555,
         command_port: int = None,
         speed_values: Tuple[int] = (
-            100,
-            400,
-            800,
-            1000,
-            200,
-            20,
-            600,
+            # 100,
+            # 400,
+            # 800,
+            # 1000,
+            # 500,
+            # 200,
+            # 20,
+            # 600,
+            1 # should be ignored
         ),
         plot: bool = False,
-        reposition_on_start: bool = False,
+        reposition_on_start: bool = True,
         block_swinging: bool = False,
         angle_terminals: bool = False,
         continuous: bool = True,
         backward_compatible: bool = False,
+        sway_start:bool=True,
+        evaluate:bool=False,
         cost_func: Optional[Callable[[np.ndarray], np.ndarray]] = None,
         controller: Optional[Controller] = None,
     ):
@@ -227,7 +250,13 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
             self.speeds = speed_values
         self.reposition_on_start = reposition_on_start
         self._calibrated = False
+        self._prev_ts: Optional[int] = None
         self.swing_block = block_swinging
+        self.sway_start = sway_start
+        self.zero_position = self.LEFT_SIDE
+        # self.goal_position = 0
+        self.eval = evaluate
+        self.counter = 0
         # Bool to tell the plant to activate the angle terminal state
         self.off_the_stops = False
         self._hit_terminal = False  # flag to force recalibration if necessary
@@ -243,6 +272,7 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         # ZMQ returns
         self._costfunc = cost_func
         self._controller = controller
+        self._current_state = None
 
     @property
     def execution_registry(self) -> List[int]:
@@ -332,10 +362,14 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         """
         ts = time.time()  # basically instantaneous
         state = self.comms.receive()
+        # self.comms.send_NOOP()
+        # state = self.comms.receive() # double interaction time to .04 and get recent state
         state = state.split(" ")
         x = int(state[0])
         theta = int(state[1])
         sin, cos, theta = self.convert_angle(theta)
+
+        x -= self.zero_position
 
         return x, sin, cos, ts, theta
 
@@ -364,9 +398,11 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
 
     def _get_extra_info(self) -> Tuple[Union[float, str], Union[float, str]]:
         """Returns cost and q for the current state."""
+        # this is wrong / used wrong; when called in record history, current_state has not been set
+
         cost = ""
         q = ""
-        if self._costfunc:
+        if self._costfunc and self._current_state:
             cost = self._costfunc(self._current_state.as_array()[None, ...])[0]
         if self._controller:
             try:
@@ -441,12 +477,16 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         """Returns the cart to the center of the axis."""
         self.assert_continue_run()
         LOG.info("Returning to center...")
+        print("RETURNING TO CENTER")
         if not self.calibrated:
             LOG.warning("Trying to go to center of an uncalibrated axis!")
             raise RuntimeWarning
         self.comms.send(Commands.CENTER)
         self.comms.receive()
         LOG.info("Returned to center.")
+        print("RETURNED TO CENTER")
+
+        #TODO I added the dist stops, added reset params, and slowed down the operator to 150 from 250
 
     def check_initial_state(self, state: Optional[SwingupState]) -> SwingupState:
         self.assert_continue_run()
@@ -456,8 +496,12 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         time.sleep(self.ACTION_DELAY)
         self.comms.send_NOOP()
         x_, sin_, cos_, ts_, theta_ = self.read_state()
-        x_dot = x_ - x
-        theta_dot = angle_slope(theta, theta_)
+        x_dot = (x_ - x) #/ (ts_ - ts)
+        theta_dot = angle_slope(theta_, theta) #/ (ts_ - ts)
+        self._prev_ts = ts_
+        right_dist = abs(self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET - x_ + self.zero_position)
+        left_dist = abs(self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET - x_ + self.zero_position)
+        #operator = 0.0 # 150 if x_ < 0 else -150  #TODO 250
         obs = OrderedDict(
             cart_position=x_,
             cart_velocity=x_dot,
@@ -465,7 +509,11 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
             pole_cosine=cos_,
             pole_velocity=theta_dot,
             pole_angle=theta_,
-            direction_ACT=0.0,
+#            true_position=x_+self.zero_position,
+            dist_left = left_dist,
+            dist_right = right_dist,
+            #operator=operator,
+            direction_ACT=0.0, # we executed a NOOP before read_state, thus 0.0 is correct direction leading to this state measurement
         )
         self._current_state = self.state_type(obs, meta=dict(ts=ts_))
         self._record_history(*obs.values())
@@ -476,8 +524,33 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
     ) -> SwingupState:
         self.assert_continue_run()
 
+        self.counter += 1
+        #if self.eval and self.counter % 250 == 0:
+        #    self.counter = 0
+        #    if self.zero_position < 3000:
+        #        print("GOAL CHANGES TO RIGHT")
+        #        self.zero_position = self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET - 400
+        #    else:
+        #        print("GOAL CHANGES TO LEFT")
+        #        self.zero_position = self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET + 400
+
         assert state == self._current_state
         direction = action["direction"]
+
+        ##### MIMIC OPERATOR
+        # print(state["cart_position"])  #TODO 250
+        #if state["cart_position"] < -300:
+        #    operator = 150
+        #elif state["cart_position"] > 300:
+        #    operator = -150
+        #else:
+        #    operator = 0
+            # operator = int(state["cart_position"] / 2)
+            # if state["cart_position"] < 50:
+            #     operator = 0
+
+        #direction = (.5 * operator) + (.5 * direction)
+        #####
 
         with CM["get-state/vel"]:
             if self.continuous:
@@ -497,13 +570,29 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         theta = cast(int, self._current_state["pole_angle"])
 
         with CM["get-state/readstate"]:
+            # SL: I doubt this handling of the overflow is correct / useful--> should probably
+            #     go to comms before handling any offsets (zero position) and should either clip
+            #     to zero or (better from Markov / RL standpoint) allow negative positions
+            #     and also allow positive positions outside range (state space doesnt end there,
+            #     positions outside x-work in x-minus are possible)
+            #
             # Build new state given new readings.
             x_, sin_, cos_, ts_, theta_ = self.read_state()
-            if x_ > 10000:
-                LOG.warning("Overflow in position!")
-                x_ = 0  # prevent overflow
-            x_dot = x_ - x
-            theta_dot = angle_slope(theta_, theta)
+            true_x = x_+self.zero_position  # SL: read encoder position is moved by -zero_position, move it back here for the bounds check
+            # if x_ > 10000:
+            #     LOG.warning("Overflow in position!")
+            #     x_ = 0  # prevent overflow
+            if true_x > 20000: # SL: larger value, to be sure (zero shift).
+                LOG.warning("Underflow in position!")
+                true_x = 0  # prevent overflow
+                x_ = - self.zero_position # SL, did this, quick and ugly fix for the moment, but should better become negative number, in order to give a correct (markov!) velocity estimate
+
+            x_dot = (x_ - x) #/ (ts_ - self._prev_ts)
+            theta_dot = angle_slope(theta_, theta) #/ (ts_ - self._prev_ts)
+            self._prev_ts = ts_
+            right_dist = self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET -true_x
+            left_dist = - (self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET - true_x)
+            # print("L:\t", left_dist, "\tP:", true_x, "\tR:", right_dist)
             obs = dict(
                 cart_position=x_,
                 cart_velocity=x_dot,
@@ -511,13 +600,19 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
                 pole_cosine=cos_,
                 pole_velocity=theta_dot,
                 pole_angle=theta_,
+#                true_position=true_x,
+                dist_left = left_dist,
+                dist_right=right_dist,
+                #operator=operator,
                 direction_ACT=direction,
             )
 
         # Determine if terminal state
-        left = self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET
-        right = self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET
-        bad_position = not (left <= x_ <= right)
+        left = self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET #- self.zero_position
+        right = self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET# - self.zero_position
+        bad_position = not (left <= true_x <= right)
+        overspeed = np.abs(theta_dot) > 20#0.65
+        bad_angle = False # SL: clarify, why this was // cos_ > 0#-.707# .82
         if self.angle_terminals:
             if np.abs(theta_) < 0.1 and not self.off_the_stops:
                 self.off_the_stops = True
@@ -527,7 +622,16 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
                 bad_angle = np.abs(theta_) >= 0.67
             terminal = bad_angle or bad_position
         else:
-            terminal = bad_position
+            terminal = bad_position # SL: or bad angles must have been wrong here //or bad_angle #or overspeed
+            if bad_position:
+                print("\t\t\tTERMINAL DUE TO")
+                print("\t\t\tCART_POSITION OUT OF BOUNDS")
+            # if overspeed:
+            #     print("\t\t\tTERMINAL DUE TO")
+            #     print("\t\t\tOVERSPEED")
+            # if bad_angle:
+            #    print("\t\tTERMINAL DUE TO")
+            #    print("\t\tBAD ANGLE")
 
         # Stop the cart if in terminal state
         if terminal:
@@ -540,8 +644,9 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
             self._hit_terminal = True if bad_position else False
 
         next_state = self.state_type(obs, terminal=terminal, meta=dict(ts=ts_))
-        self._record_history(*obs.values())
-        self._current_state = next_state
+        self._current_state = next_state  # this should not be necessary, because base plant does it
+        self._record_history(*obs.values()) # must be after setting current state (above), because it uses self.current_state (unfortunately, internally, for getting costs). 
+             # SL: recording history this way has the problem, that we display the PREVIOUS action aligned with the present state, NOT the action selected by the agent in repsonse to this state. This will lead to misinterpreatations of the graph and also lead to underestimating the delay by one cylce.
         return self._current_state
 
     def enforce_pole_down(self, consecutive_steps: int = 5) -> None:
@@ -587,8 +692,14 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         cosine_: float,
         theta_dot: float,
         theta: float,
+        ld,
+        rd,
+        #op,
+#        x_true: float,
         vel: float,
     ) -> None:
+        cost, q = self._get_extra_info()
+
         """Record a state in the local history for analysis"""
         self.df_history.loc[self.episode_steps, "cart_position"] = x_
         self.df_history.loc[self.episode_steps, "cart_velocity"] = x_dot
@@ -596,7 +707,13 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         self.df_history.loc[self.episode_steps, "pole_cosine"] = cosine_
         self.df_history.loc[self.episode_steps, "pole_velocity"] = theta_dot
         self.df_history.loc[self.episode_steps, "pole_angle"] = theta
+        #self.df_history.loc[self.episode_steps, "true_position"] = x_true
+        self.df_history.loc[self.episode_steps, "left_dist"] = ld
+        self.df_history.loc[self.episode_steps, "right_dist"] = rd
+        #self.df_history.loc[self.episode_steps, "operator"] = op
         self.df_history.loc[self.episode_steps, "direction_ACT"] = vel
+        self.df_history.loc[self.episode_steps, "cost"] = cost
+        self.df_history.loc[self.episode_steps, "q"] = q
 
     def solve_condition(self, state: SwingupState) -> bool:
         """Return True if potentially solved.
@@ -606,6 +723,7 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         the goal region, and so the saved model needs to be double checked.
         """
         angle_goal = 0.15
+
         if np.abs(state["pole_angle"]) < angle_goal:
             return True
         return False
@@ -622,18 +740,97 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         if not self.calibrated:
             self.calibrate()
         self.return_to_center()
+        #self.comms.receive()
+        # Check if returning to center actually worked and if not, recalibrate
+        self.comms.send_NOOP()
+        position = self.read_state()[0]
+        #if not (self.CENTER - 400 - self.zero_position < position < self.CENTER + 400- self.zero_position):
+        #    print("\tRecentering...")
+        #    LOG.warning("Centering failed, recalibrating...")
+        #    self._calibrated = False
+        #    self.get_ready()
+
+    def move_offcenter(self):
+        left = self.zero_position < self.CENTER
+        print("GOAL POSITION IS", f"{'left' if left else 'right'}")
+        if not left:
+            print("Moving left...")
+            self.move(-100)
+            time.sleep(2)
+            self.read_state()
+            self.move(0)
+            print("Pos", self.read_state()[0])
+            self.comms.send_NOOP()
+            s = self.read_state()
+            print("Pos", s[0])
+        else:
+            print("Moving right...")
+            self.move(100)
+            time.sleep(2)
+            self.read_state()
+            self.move(0)
+            print("Pos", self.read_state()[0])
+            self.comms.send_NOOP()
+            s = self.read_state()
+            print("Pos", s[0])
+        if np.random.random() < .33 or self.eval:
+            print("JIGGLING")
+            for _ in range(1):
+                self.move(-200)
+                time.sleep(.32)
+                self.read_state()
+                self.move(200)
+                time.sleep(.32 * 2)
+                self.read_state()
+                self.move(-200)
+                time.sleep(.32)
+                self.read_state()
+            self.move(0)
+            print("Pos", self.read_state()[0])
+            self.comms.send_NOOP()
+            print("Pos", self.read_state()[0])
+        print("DONE WITH SETUP")
+        return
 
     def notify_episode_starts(self) -> bool:
         self.assert_continue_run()
         super().notify_episode_starts()
+        self.df_history = pd.DataFrame(columns=SwingupState.channels()) # SL: reset data for plotting
+
         self.comms.notify_episode_starts()
         self.initialize_comms()
         self.get_ready()
+        if self.sway_start:
+            # Goal position is tested for > .5 to determine
+            # left or right goals; it stays static throughout
+            # the entire episode.
+            # self.goal_position = np.random.random()
+            # Convert positions to move the goal region around
+            if np.random.random() < .5:  # goal on the left
+                self.zero_position = self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET + 400
+            else:  # goal on the right
+                self.zero_position = self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET - 400
+            if self.eval:
+                self.zero_position = self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET + 400
+            else:
+                pass
+                # self.zero_position = self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET + 400
+            print("ZERO POSITION IS", self.zero_position)
+            self.move_offcenter()
         if self.swing_block:
             self.enforce_pole_down()
+        # For holding the pole up...
+        # for i in list(range(0,4)[::-1]):
+        #     print(f"{i}\t{i}\t{i}\t{i}\t{i}\t{i}\t{i}")
+        #     time.sleep(1)
         return True
 
     def notify_episode_stops(self) -> bool:
+        #print(f"####### last cost in df_history { self.df_history['cost'].iloc[-1] }")
+    
+        #self.df_history["left"] = self.df_history["cart_position"] <= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET
+        #print(self.df_history)
+
         self.assert_continue_run()
         time.sleep(0.1)
         try:
@@ -652,6 +849,7 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         self._hit_terminal = False
         self.off_the_stops = False
         self._solved = self.solve_condition(self._current_state)
+
         if self.plot:
             plot_swingup_state_history(self)
         return True
@@ -687,21 +885,25 @@ def plot_swingup_state_history(
                 the plant to run
 
     """
+    cost = None
     if sart_path:
         with SARTReader(sart_path) as sart:
             sart = sart.load_full_episode()
             x = sart[0][:, 0]
             x_s = sart[0][:, 1]
             t = sart[0][:, 2]
+            td = sart[0][:, 3]
             a = sart[0][:, 4]
     else:
         plant = cast(SwingupPlant, plant)
         x = plant.df_history.cart_position
         x_s = plant.df_history.cart_velocity
         t = plant.df_history.pole_angle
-        a = plant.df_history.direction
+        td = plant.df_history.pole_velocity
+        a = plant.df_history.direction_ACT
+        cost = plant.df_history.cost
 
-    fig, axs = plt.subplots(3, figsize=(10, 5))
+    fig, axs = plt.subplots(5, figsize=(10, 8))
     axs[0].plot(x, label="cart_position")
     axs[0].set_title("cart_position")
     axs[0].set_ylabel("Position")
@@ -714,21 +916,34 @@ def plot_swingup_state_history(
     axs[1].set_ylabel("Angle")
     axs[1].legend()
 
-    axs[2].plot(a, label="Action")
-    axs[2].axhline(0, color="grey", linestyle=":")
-    axs[2].set_title("Control")
-    axs[2].set_ylabel("Velocity")
-    axs[2].legend(loc="upper left")
-    axs2b = axs[2].twinx()
+    axs[2].plot(x, label="pole_velocity")
+    axs[2].set_title("pole_velocity")
+    axs[2].set_ylabel("Angular Vel")
+    axs[2].legend()
+
+    axs[3].plot(a, label="Action")
+    axs[3].axhline(0, color="grey", linestyle=":")
+    axs[3].set_title("Control")
+    axs[3].set_ylabel("Velocity")
+    axs[3].legend(loc="upper left")
+    axs2b = axs[3].twinx()
     axs2b.plot(x_s, color="black", alpha=0.4, label="True Velocity")
     axs2b.set_ylabel("Steps/s")
     axs2b.legend(loc="upper right")
+
+    if cost is not None:
+        axs[4].plot(plant.df_history.cost, label="cost")
+        axs[4].set_title("cost")
+        axs[4].set_ylabel("cost")
+        axs[4].legend()
 
     plt.suptitle("NFQ Controller on Physical Swingup Model")
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     if filename:
         plt.savefig(filename)
-    plt.show()
+        plt.close()
+    else:
+        plt.show()
 
 
 if __name__ == "__main__":
@@ -754,10 +969,13 @@ if __name__ == "__main__":
     def print_state():
         plant.motor_off()
         plant.comms.send_NOOP()
+        ts_ = 0
         while True:
-            x = plant.read_state()
-            print("X", x[0], "T", plant.convert_angle(x[1]))
+            x, sin, cos, ts, theta = plant.read_state()
+            diff = ts - ts_
+            print(f"X: {x}\tSIN: {round(sin,3)}\tCOS: {round(cos,3)}\tTHETA: {round(theta,3)}\tTS: {ts} (delta: {round(diff,4)})")
             time.sleep(0.2)
+            ts_ = ts
             plant.comms.send_NOOP()
 
     def test_continuous_movement():
@@ -894,8 +1112,93 @@ if __name__ == "__main__":
             print("sin", state[1], "cos", state[2], "theta", state[-1])
             time.sleep(1)
 
-    # print_state()
+    def recenter_check():
+        print("Checking ability to recenter")
+        for i in range(20):
+            print("Moving right")
+            plant.move(200)
+            state = plant.read_state()  # x, sin, cos, ts, theta
+            time.sleep(1)
+            print("Stopping...")
+            plant.move(0)
+            print("RECENTERING")
+            state = plant.read_state()  # x, sin, cos, ts, theta
+            plant.return_to_center()
+            time.sleep(1)
+            print("Moving left")
+            plant.move(-200)
+            state = plant.read_state()  # x, sin, cos, ts, theta
+            time.sleep(2)
+            print("Stopping...")
+            plant.move(0)
+            state = plant.read_state()  # x, sin, cos, ts, theta
+            time.sleep(1)
+            print("RECENTERING")
+            plant.return_to_center()
+
+    def move_offcenter_check():
+        print("Checking offcenter move logic")
+        if np.random.random() < .5:
+            print("Moving left...")
+            # plant.move(-100)
+            # time.sleep(2)
+            # plant.read_state()
+            # plant.move(0)
+            # print("Pos", plant.read_state()[0])
+            plant.comms.send_NOOP()
+            s = plant.read_state()
+            print("Pos", s[0])
+
+            if s[4] < .075:
+                print("JIGGLING")
+                for _ in range(3):
+                    plant.move(500)
+                    time.sleep(.08)
+                    plant.read_state()
+                    plant.move(-500)
+                    time.sleep(.16)
+                    print("Pos", plant.read_state()[0])
+                plant.move(0)
+                plant.read_state()
+                plant.comms.send_NOOP()
+                print("Pos", plant.read_state()[0])
+        else:
+            print("Moving right...")
+            # plant.move(100)
+            # time.sleep(2)
+            # plant.read_state()
+            # plant.move(0)
+            # print("Pos", plant.read_state()[0])
+            plant.comms.send_NOOP()
+            s = plant.read_state()
+            print("Pos", s[0])
+
+            if s[4] < .075:
+                print("JIGGLING")
+                for _ in range(3):
+                    plant.move(-500)
+                    time.sleep(.08)
+                    plant.read_state()
+                    plant.move(500)
+                    time.sleep(.16)
+                    print("Pos", plant.read_state()[0])
+                plant.move(0)
+                plant.read_state()
+                plant.comms.send_NOOP()
+                print("Pos", plant.read_state()[0])
+
+
+    # recenter_check()
     # test_discrete_movement()
     # test_continuous_movement()
-    move_back_and_forth()
+    # move_back_and_forth()
+    for i in range(4):
+        move_offcenter_check()
+        plant.reset()
+        print("Calibrating...")
+        plant.calibrate()
+        print("Centering...")
+        plant.return_to_center()
+        print("Done.")
+    print_state()
     plant.motor_off()
