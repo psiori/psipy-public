@@ -31,6 +31,9 @@ The option '-e' is used to install the package in editable mode, which allows yo
 
 The options '[dev,gym]' are used to install additional dependencies for the development environment (inclduing pytest and jupyter) as well as AI gym together with its own dependencies. Please be aware that we switched to Farama-Foundations's fork [Gymnasium](https://github.com/Farama-Foundation/Gymnasium) of OpenAI's gym when they took over maintenance of the original gym library.
 
+Presently, only the following example script has been ported and tested to work with the public version of psipy:
+
+- examples/rl/simulated_cartpole/nfq_psiori_cartpole.py , which will learn to swing up and balance a simulated cart-pole system.
 
 ## Usage
 
