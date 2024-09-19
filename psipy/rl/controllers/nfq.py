@@ -108,7 +108,7 @@ class DQBatch(Sequence):
 
         #print(">>> immediate cost", costs)
         #print(">>> terminal", terminals)
-        print(">>> q_target before scaling: ", q_target)
+        #print(">>> q_target before scaling: ", q_target)
         print(f"qtargets n: { len(q_target) } max: {q_target.max()} min: {q_target.min()}")
 
 
@@ -130,7 +130,6 @@ class DQBatch(Sequence):
             q_target = np.clip((q_target - q_target.min()) + 0.005, 0.005, 0.995)
             # qs[costs.ravel() == 0] = 0.05  #SL in all versions I've seen, this was commented out
 
-        print(f"A={self.A} B={self.B}")
         # print(">>> qtargets after scaling and setting terminals and clipping", q_target)
 
         # Store the q target in the batch; it is altered below if
