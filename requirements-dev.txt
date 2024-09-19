@@ -1,0 +1,13 @@
+flake8-bugbear~=20.1.4
+flake8~=3.8.4
+flaky~=3.7.0
+isort~=5.6.4
+jupyter==1.1.1
+mypy~=0.991
+pre-commit~=2.7.1
+pytest-cov~=2.10.1
+pytest~=6.1.2
+recommonmark~=0.6.0
+sphinx_rtd_theme~=2.0.0
+sphinx-autodoc-typehints~=1.11.1
+Sphinx~=7.1.2

@@ -1,0 +1,155 @@
+variables:
+  - group: psipy
+  - name: DOCS_BRANCH
+    value: develop
+  - name: BUILD_BRANCH
+    value: develop
+  - name: skiptests
+    value: False
+
+  # Cache
+  - name: ENABLE_CACHE
+    value: True
+  - name: CACHE_KEY
+    value: '"psipy" | "$(imageName)" | "$(pip_cache_ver)" | "venv" | "AZP_CACHING_CONTENT_FORMAT=$(AZP_CACHING_CONTENT_FORMAT)" | requirements.txt | requirements-dev.txt'
+  - name: CACHE_DIR
+    value: .venv
+  - name: AZP_CACHING_CONTENT_FORMAT
+    value: SingleTar
+  - name: AZP_CACHING_TAR
+    value: 1
+
+trigger:
+  branches:
+    include:
+    - '*'
+  tags:
+    include:
+    - 'v*'
+
+stages:
+- stage: test
+  jobs:
+  - job:
+    condition: and(succeeded(), ne(variables['skiptests'], True))
+    strategy:
+      matrix:
+        ubuntu:
+          MATRIX_NAME: ubuntu
+          imageName: 'ubuntu-18.04'
+          python.version: '3.6'
+          node.version: '8.x'
+          VENV: $(CACHE_DIR)/bin/activate
+        # Run windows and macos only for the BUILD_BRANCH and for Pull Requests.
+        ${{ if or(eq(variables['Build.SourceBranchName'], variables['BUILD_BRANCH']), eq(variables['Build.Reason'], 'PullRequest')) }}:
+          windows:
+            MATRIX_NAME: windows
+            imageName: 'vs2017-win2016'
+            python.version: '3.6'
+            node.version: '8.x'
+            VENV: $(CACHE_DIR)/Scripts/activate
+          macos:
+            MATRIX_NAME: macos
+            imageName: 'macos-10.14'
+            python.version: '3.6'
+            node.version: '8.x'
+            VENV: $(CACHE_DIR)/bin/activate
+
+    pool:
+      vmImage: $(imageName)
+
+    steps:
+    - checkout: self
+      submodules: recursive
+      lfs: false
+
+    - task: UsePythonVersion@0
+      displayName: 'Use Python $(python.version)'
+      inputs:
+        versionSpec: '$(python.version)'
+        architecture: 'x64'
+
+    - task: Cache@2
+      inputs:
+        key: $(CACHE_KEY)
+        path: $(CACHE_DIR)
+        cacheHitVar: CACHE_RESTORED
+      displayName: 'Cache pip packages'
+      condition: and(succeeded(), ne(variables.ENABLE_CACHE, False))
+
+    - bash: |
+        sudo apt-get install -y python-opengl
+      displayName: Install apt prerequisites
+      condition: and(succeeded(), eq(variables['MATRIX_NAME'], 'ubuntu'))
+
+    - bash: |
+        python -m venv $(CACHE_DIR)
+        source $(VENV)
+        python -m pip install -U pip setuptools>=41.0.0
+        echo "MATRIX_NAME: $(MATRIX_NAME)"
+        if [[ "$(MATRIX_NAME)" == "windows" ]]; then
+          echo "Install windows pip requirements."
+          python -m pip install -e ".[dev,automl,gym,win]"
+        else
+          echo "Install non-windows pip requirements."
+          python -m pip install -e ".[dev,automl,gym]"
+        fi
+      displayName: Install pip prerequisites
+      condition: and(succeeded(), eq(variables.CACHE_RESTORED, False))
+
+    - bash: |
+        source $(VENV)
+        echo "Num cpus: $(getconf _NPROCESSORS_ONLN)"
+        python -m pytest
+      displayName: Run pytest
+
+    - bash: |
+        source $(VENV)
+        python -m flake8 psipy
+      displayName: Run flake8
+
+    - bash: |
+        source $(VENV)
+        python -m mypy psipy
+      displayName: Run mypy
+
+    - task: PublishTestResults@1
+      displayName: Publish test results
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: 'dist/tests/junit.xml'
+      condition: and(succeededOrFailed(), eq(variables['MATRIX_NAME'], 'ubuntu'))
+
+    - task: PublishCodeCoverageResults@1
+      displayName: Publish code coverage
+      inputs:
+        codeCoverageTool: 'cobertura'
+        summaryFileLocation: 'dist/tests/cobertura-coverage.xml'
+      condition: and(succeededOrFailed(), eq(variables['MATRIX_NAME'], 'ubuntu'))
+
+    # Build and publish documentation.
+    - template: .azure/docs.yml
+      parameters:
+        branch: ${{ variables.DOCS_BRANCH }}
+        connection: psipyrg
+        rg: psipy
+        app: psipy
+        path: docs/dist/output
+        venv: ${{ variables.VENV }}
+
+# Build jobs, only run them for specific branches.
+- stage: build
+  condition: |
+    and(succeeded(),
+        or(in(variables['Build.SourceBranchName'], variables['BUILD_BRANCH']),
+           startsWith(variables['Build.SourceBranch'], 'refs/tags/')))
+
+  jobs:
+  - template: .azure/docker.yml
+    parameters:
+      branch: ${{ variables.BUILD_BRANCH }}
+      acr: psipy.azurecr.io/psipy
+
+  - template: .azure/distributable.yml
+    parameters:
+      branch: ${{ variables.BUILD_BRANCH }}

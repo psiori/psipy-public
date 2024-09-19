@@ -1,0 +1,72 @@
+# The staging pipeline is only triggered through `/azp run` comments on pull
+# requests. This is configured through the azure devops ui:
+# pipeline -> settings -> triggers
+trigger: none
+pr:
+  - "*"
+
+variables:
+  python.version: "3.6"
+  venv: $(CACHE_DIR)/bin/activate
+
+  # Cache
+  ENABLE_CACHE: True
+  CACHE_KEY: '"psipy" | "sphinx" | requirements.txt | requirements-dev.txt'
+  CACHE_DIR: .venv
+  AZP_CACHING_CONTENT_FORMAT: SingleTar
+  AZP_CACHING_TAR: 1
+
+pool:
+  vmImage: "ubuntu-18.04"
+
+steps:
+  - checkout: self
+    submodules: recursive
+    lfs: false
+  - task: UsePythonVersion@0
+    displayName: "Use Python $(python.version)"
+    inputs:
+      versionSpec: "$(python.version)"
+      architecture: "x64"
+
+  - task: Cache@2
+    inputs:
+      key: $(CACHE_KEY)
+      path: $(CACHE_DIR)
+      cacheHitVar: CACHE_RESTORED
+    displayName: "Cache pip packages"
+    condition: ne(variables.ENABLE_CACHE, False)
+
+  - bash: |
+      python -m venv $(CACHE_DIR)
+      source $(venv)
+      python -m pip install -U pip setuptools>=41.0.0
+      python -m pip install -e ".[dev]"
+    displayName: Install pip prerequisites
+    condition: eq(variables.CACHE_RESTORED, False)
+
+  - bash: |
+      source $(venv)
+      make -C docs init
+      make -C docs apidoc
+      make -C docs html
+    displayName: Build sphinx documentation
+
+  # The following task relies on the azure pipeline Azure RM service
+  # connection "ConnectedServiceName" being created first. Similarly, the
+  # resource group "ResourceGroupName" and azure app service "WebAppName"
+  # should be created manually through the azure portal. The free azure app
+  # service tier should be fine for hosting docs. Additionally, setup the
+  # app service to use Azure AD authentication to restrict access to members
+  # of the subscription. Finally, the app service needs to be configured to
+  # serve html: `python3 -m http.server $PORT --directory /home/site/wwwroot`
+  - task: AzureRMWebAppDeployment@4
+    displayName: Publish sphinx documentation
+    inputs:
+      ConnectedServiceName: psipyrg
+      DeployToSlotOrASEFlag: True
+      appType: webAppLinux
+      UseWebDeploy: True
+      ResourceGroupName: psipy
+      WebAppName: psipy-staging
+      Package: docs/dist/output/
