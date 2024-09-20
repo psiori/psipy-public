@@ -221,7 +221,7 @@ def plot_swingup_state_history(
 
 import numpy as np
 
-def plot_metrics(metrics, fig=None):
+def plot_metrics(metrics, fig=None, filename=None):
     if fig is not None:
         fig.clear()
     else:
@@ -257,6 +257,9 @@ def plot_metrics(metrics, fig=None):
     axs[0].legend()
 
     fig.canvas.draw()
+
+    if filename is not None:
+        fig.savefig(filename)
 
     return fig
     
@@ -300,6 +303,7 @@ loop.run(1, max_episode_steps=300)
 nfq.epsilon = old_epsilon
 
 metrics = { "total_cost": [], "avg_cost": [], "cycles_run": [], "wall_time_s": [] }
+min_avg_step_cost = 0.01  # if avg costs of an episode are less than 105% of this, we save the model
 
 # Load the collected data
 #batch = Batch.from_hdf5(
@@ -311,6 +315,7 @@ metrics = { "total_cost": [], "avg_cost": [], "cycles_run": [], "wall_time_s": [
 
 fig = None
 do_eval = True
+
 
 for i in range(200):
     loop.run(1, max_episode_steps=500)
@@ -335,24 +340,6 @@ for i in range(200):
     if (i < 10 or i % 10 == 0) and i < 100:
         nfq.fit_normalizer(batch.observations) # , method="max")
 
-    if do_eval:
-        old_epsilon = nfq.epsilon
-        nfq.epsilon = 0.0
-        eval_loop.run(2, max_episode_steps=600)
-        nfq.epsilon = old_epsilon
-
-        episode_metrics = eval_loop.metrics[1] # only one episode was run
-
-        metrics["total_cost"].append(episode_metrics["total_cost"])
-        metrics["cycles_run"].append(episode_metrics["cycles_run"])
-        metrics["wall_time_s"].append(episode_metrics["wall_time_s"])
-        metrics["avg_cost"].append(episode_metrics["total_cost"] / episode_metrics["cycles_run"])
-
-        fig = plot_metrics(metrics, fig=fig)
-        if fig is not None:
-            fig.show()
-
-
 
     # Fit the controller
 #callback = PlottingCallback(
@@ -370,8 +357,38 @@ for i in range(200):
  
 #        callbacks=[callback],
         )
+        nfq.save(f"model-latest")  # this is always saved to allow to continue training after interrupting (and potentially changing) the script
     except KeyboardInterrupt:
         pass
+
+    if do_eval:
+        old_epsilon = nfq.epsilon
+        nfq.epsilon = 0.0
+        eval_loop.run(1, max_episode_steps=600)
+        nfq.epsilon = old_epsilon
+
+        episode_metrics = eval_loop.metrics[1] # only one episode was run
+
+        metrics["total_cost"].append(episode_metrics["total_cost"])
+        metrics["cycles_run"].append(episode_metrics["cycles_run"])
+        metrics["wall_time_s"].append(episode_metrics["wall_time_s"])
+        metrics["avg_cost"].append(episode_metrics["total_cost"] / episode_metrics["cycles_run"])
+
+        fig = plot_metrics(metrics, fig=fig, filename=f"metrics-latest.png")
+        if fig is not None:
+            fig.show()
+
+        avg_step_cost = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
+
+        if avg_step_cost < min_avg_step_cost * 1.05:
+            filename = f"model-candidate-{len(batch._episodes)}"
+            print("Saving candidate model: ", filename)
+            nfq.save(filename)
+
+        if avg_step_cost < min_avg_step_cost:
+            min_avg_step_cost = avg_step_cost
+            nfq.save("model-very_best")
+
 
 # Eval the controller with rendering on.  Enjoy!
 #loop = Loop(plant, nfq, "simulated.cartpole.CartPole", f"{sart_folder}-eval", render=True)
