@@ -49,6 +49,7 @@ Improve:
 import glob
 import time
 import sys
+import os
 from getopt import getopt
 
 import numpy as np
@@ -435,6 +436,10 @@ for cycle in range(0, cycles):
             callbacks=[callback],
             verbose=1,
         )
+        try:
+            os.rename("model-latest", "model-latest-backup")
+        except KeyboardInterrupt:
+            pass
         nfq.save(f"model-latest")  # this is always saved to allow to continue training after
     except KeyboardInterrupt:
         pass
@@ -469,6 +474,10 @@ for cycle in range(0, cycles):
 
         if avg_step_cost < min_avg_step_cost:
             min_avg_step_cost = avg_step_cost
+            try:
+                os.rename("model-very_best", "model-second_best")
+            except OSError:
+                pass
             nfq.save("model-very_best")
 
 print("Elapsed time:", time.time() - start_time)
