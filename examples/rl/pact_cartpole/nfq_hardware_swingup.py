@@ -53,6 +53,7 @@ from getopt import getopt
 
 import numpy as np
 import tensorflow as tf
+from matplotlib import pyplot as plt
 from psipy.rl.controllers.nfq import NFQ, tanh2
 from psipy.rl.io.batch import Batch, Episode
 from psipy.rl.io.sart import SARTReader
@@ -259,14 +260,59 @@ if not load_network:
 else:
     nfq = NFQ.load(net_name, custom_objects=[ActionType])
 
-nfq.epsilon = 0.0
 nfq.epsilon = 0.5
 
 callback = PlottingCallback(
-    ax1="q", is_ax1=lambda x: x.endswith("q"), ax2="mse", is_ax2=lambda x: x == "loss"
+    ax1="q", is_ax1=lambda x: x.endswith("q"), ax2="mse", is_ax2=lambda x: x == "avg_qdelta"
 )
 
 loop = Loop(plant, nfq, "Hardware Swingup", sart_folder)
+eval_loop = Loop(plant, nfq, "Hardware Swingup", f"{sart_folder}-eval")
+
+
+import numpy as np
+
+def plot_metrics(metrics, fig=None, filename=None):
+    if fig is not None:
+        fig.clear()
+    else:
+        fig = plt.figure(1,  figsize=(10, 8))
+
+    axs = fig.subplots(1)
+
+    window_size = 7
+
+    if window_size > len(metrics["avg_cost"]):
+        return
+    
+    #print(">>> metrics['avg_cost']", metrics["avg_cost"])
+    
+    # Calculate moving average and variance
+    avg_cost = np.array(metrics["avg_cost"])
+    moving_avg = np.convolve(avg_cost, np.ones(window_size)/window_size, mode='same')
+    
+    # Calculate moving variance
+    moving_var = np.convolve(avg_cost**2, np.ones(window_size)/window_size, mode='same') - moving_avg**2
+    moving_std = np.sqrt(moving_var)
+    
+    # Plot original data, moving average, and variance
+    x = range(len(avg_cost))
+    x_valid = x # range(window_size-1, len(avg_cost))
+    
+    axs.plot(x_valid, avg_cost, label="avg_cost", alpha=0.3, color='gray')
+    axs.plot(x_valid, moving_avg, label="moving average", color='blue')
+    axs.fill_between(x_valid, moving_avg - moving_std, moving_avg + moving_std, alpha=0.2, color='blue', label='±1 std dev')
+    
+    axs.set_title("Average Cost")
+    axs.set_ylabel("Cost per step")
+    axs.legend()
+
+    fig.canvas.draw()
+
+    if filename is not None:
+        fig.savefig(filename)
+
+    return fig
 
 
 # FIT BEFORE INTERACT >
@@ -311,15 +357,18 @@ epsilon = nfq.epsilon
 
 pp = LoopPrettyPrinter(costfunc)
 
-
 num_cycles_rand_start = 0
+
+metrics = { "total_cost": [], "avg_cost": [], "cycles_run": [], "wall_time_s": [] }
+min_avg_step_cost = 0.01  # if avg costs of an episode are less than 105% of this, we save the model
+
+fig = None
+do_eval = True
 
 for cycle in range(0, cycles):
 
     print("Cycle:", cycle)
-    if cycle % 3 == 0 and cycle > num_cycles_rand_start:
-        nfq.epsilon = 0.05
-    elif cycle < num_cycles_rand_start:
+    if cycle < num_cycles_rand_start:
         nfq.epsilon = 0.8
     elif cycle < 0: # 100:
         epsilon = max(0.1, epsilon - 0.05)
@@ -333,8 +382,6 @@ for cycle in range(0, cycles):
     # Collect data
     for _ in range(1):
         loop.run_episode(cycle + 1, max_steps=max_episode_length, pretty_printer=pp)
-
-    plot_swingup_state_history(plant=plant, filename=f"episode-{ cycle }.eps")
 
     if cycle < num_cycles_rand_start:
         continue   # don't fit yet
@@ -358,6 +405,8 @@ for cycle in range(0, cycles):
     # Fit the normalizer
    # if cycle < 40 and cycle % 5 == 0:    # at some point stop normalizing because we dont throw away the network and dont want the data to "move under the network"
 
+#    plot_swingup_state_history(plant=plant, filename=f"episode-{ len(batch._episodes) }.eps")
+
     iterations = 2
 
 
@@ -374,17 +423,53 @@ for cycle in range(0, cycles):
     )  # max(batch.num_samples // 1, 512)
     print(f"Batch size: {batch_size}/{batch.num_samples}")
 
+    try:
     # Fit the controller
-    nfq.fit(
-        batch,
-        costfunc=costfunc,
-        iterations=4, # iterations,
-        epochs= 8,
-        minibatch_size=2048, #batch_size,
-        gamma=gamma,
-        callbacks=[callback],
-        verbose=1,
-    )
+        nfq.fit(
+            batch,
+            costfunc=costfunc,
+            iterations=4, # iterations,
+            epochs= 8,
+            minibatch_size=2048, #batch_size,
+            gamma=gamma,
+            callbacks=[callback],
+            verbose=1,
+        )
+        nfq.save(f"model-latest")  # this is always saved to allow to continue training after
+    except KeyboardInterrupt:
+        pass
+
+    if do_eval:
+        old_epsilon = nfq.epsilon
+        nfq.epsilon = 0.0
+        eval_loop.run(1, max_episode_steps=400)
+        nfq.epsilon = old_epsilon
+
+        episode_metrics = eval_loop.metrics[1] # only one episode was run
+
+        metrics["total_cost"].append(episode_metrics["total_cost"])
+        metrics["cycles_run"].append(episode_metrics["cycles_run"])
+        metrics["wall_time_s"].append(episode_metrics["wall_time_s"])
+        metrics["avg_cost"].append(episode_metrics["total_cost"] / episode_metrics["cycles_run"])
+
+        print(">>> metrics['avg_cost']", metrics["avg_cost"])
+        print(metrics)
+        print(episode_metrics)
+
+#        fig = plot_metrics(metrics, fig=fig, filename=f"metrics-latest.png")
+#        if fig is not None:
+#            fig.show()
+
+        avg_step_cost = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
+
+        if avg_step_cost < min_avg_step_cost * 1.05:
+            filename = f"model-candidate-{len(batch._episodes)}"
+            print("Saving candidate model: ", filename)
+            nfq.save(filename)
+
+        if avg_step_cost < min_avg_step_cost:
+            min_avg_step_cost = avg_step_cost
+            nfq.save("model-very_best")
 
 print("Elapsed time:", time.time() - start_time)
 
