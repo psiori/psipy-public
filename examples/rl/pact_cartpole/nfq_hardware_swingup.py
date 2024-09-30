@@ -51,14 +51,14 @@ import time
 
 import numpy as np
 import tensorflow as tf
-from psipy.rl.control.nfq import NFQ, tanh2
+from psipy.rl.controllers.nfq import NFQ, tanh2
 from psipy.rl.io.batch import Batch, Episode
 from psipy.rl.io.sart import SARTReader
 from psipy.rl.loop import Loop, LoopPrettyPrinter
 from psipy.rl.visualization.plotting_callback import PlottingCallback
 from tensorflow.keras import layers as tfkl
 
-from cartpole_control.plant.cartpole_plant import (
+from psipy.rl.plants.real.pact_cartpole.cartpole import (
 #SL   SwingupDiscretizedAction,
     SwingupContinuousDiscreteAction,
     SwingupPlant,
@@ -76,12 +76,12 @@ STATE_CHANNELS = (
 #SL    "pole_angle",
     "pole_sine",
     "pole_cosine",
-#    "pole_velocity",
+    "pole_velocity",
     "direction_ACT",
 )
 THETA_CHANNEL_IDX = STATE_CHANNELS.index("pole_cosine") #SL pole_angle
 CART_POSITION_CHANNEL_IDX = STATE_CHANNELS.index("cart_position") #SL pole_angle
-EPS_STEPS = 100 # 400
+EPS_STEPS = 400
 
 
 # Create a model based on state, action shapes and lookback
@@ -111,9 +111,11 @@ def make_model(n_inputs, n_outputs, lookback):
 def costfunc(states: np.ndarray) -> np.ndarray:
     position = states[:, CART_POSITION_CHANNEL_IDX] # SL TODO: change, don't assume index 0 for position
     theta = states[:, THETA_CHANNEL_IDX]             # SL TODO: if using cosine, needs to change 
-    #theta_speed = states[:, THETA_CHANNEL_IDX + 2]   
+    theta_speed = states[:, THETA_CHANNEL_IDX + 1]   
 
-    costs = (1.0-(theta+1.0)/2.0) / 100.0  #SL orig: tanh2(theta, C=0.01, mu=0.5)
+    to_fast = abs(theta_speed) > 0.45
+
+    costs = (1.0-(theta+1.0)/2.0) / 100.0 + (abs(theta_speed) > 0.42) * (abs(theta_speed) - 0.42) / 5.0 #SL orig: tanh2(theta, C=0.01, mu=0.5)
                               # why this: gives 1 when standing up and 0 when hanging down (bc theta..)  -- probably divided to make sure its smaller than terminal costs of failure
     #costs += tanh2(theta_speed, C=0.01, mu=2.5)
 
@@ -124,13 +126,24 @@ def costfunc(states: np.ndarray) -> np.ndarray:
 
     # PROBLEM: for terminals, we need to check raw, unmoved position (no moved zero), but we can't compute here and lack information about the zero shift. Thus, use the lEFT_SIDE, because we know, in default param setup thats the zero. Also problem: if we move zero, MDP is not markov, because we cant derive positions of bounds from state :(
 
+    center = (SwingupPlant.LEFT_SIDE + SwingupPlant.RIGHT_SIDE) / 2.0
+    margin = abs(SwingupPlant.RIGHT_SIDE - SwingupPlant.LEFT_SIDE) / 2.0 * 0.3  # 25% of distance from center to hard endstop
+
     if position.size > 1:  # SL: original version did not work if passed single states
+        costs[abs(position - center) > margin] = 0.011
+        costs[position + SwingupPlant.LEFT_SIDE <= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET * 2] = 0.1
+        costs[position + SwingupPlant.LEFT_SIDE >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET * 2] = 0.1
         costs[position + SwingupPlant.LEFT_SIDE <= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET] = 1.0
         costs[position + SwingupPlant.LEFT_SIDE >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET] = 1.0
+
     elif position.size == 1:
-        print (f"true_position { position[0] + SwingupPlant.LEFT_SIDE }")
+        if (abs(position[0] - center) > margin):
+            costs[0] = 0.011
+        #print (f"true_position { position[0] + SwingupPlant.LEFT_SIDE }")
         if (position[0] + SwingupPlant.LEFT_SIDE<= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET or position[0] >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET):
             costs[0] = 1.0
+        elif (position[0] + SwingupPlant.LEFT_SIDE<= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET * 2 or position[0] >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET * 2):
+            costs[0] = 0.1
     #print(costs)
 
     return costs
@@ -138,8 +151,8 @@ def costfunc(states: np.ndarray) -> np.ndarray:
 
 num = 1000
 rando_positions = np.random.randint(
-    SwingupPlant.LEFT_SIDE + 200,  # Do not go into terminal area
-    SwingupPlant.RIGHT_SIDE - 200,  # Do not go into terminal area
+    SwingupPlant.LEFT_SIDE + 500,  # Do not go into terminal area
+    SwingupPlant.RIGHT_SIDE - 500,  # Do not go into terminal area
     num,
 )
 
@@ -200,7 +213,7 @@ plant = SwingupPlant(hilscher_port="5555", cost_func=costfunc, sway_start=False)
 		   #  speed_values=(800, 400)) #SL speed_value1, speed_value2
 ActionType = SwingupContinuousDiscreteAction # SL
 StateType = SwingupState
-lookback = 4
+lookback = 6
 gamma = 0.98
 max_episode_length = EPS_STEPS
 
@@ -276,17 +289,21 @@ epsilon = nfq.epsilon
 
 pp = LoopPrettyPrinter(costfunc)
 
+
+num_cycles_rand_start = 0
+
 for cycle in range(0, cycles):
-    num_cycles_rand_start = 0
 
     print("Cycle:", cycle)
-    if cycle % 10 == 0 and cycle > num_cycles_rand_start:
-        nfq.epsilon = 0.0
+    if cycle % 3 == 0 and cycle > num_cycles_rand_start:
+        nfq.epsilon = 0.05
     elif cycle < num_cycles_rand_start:
         nfq.epsilon = 0.8
-    else:
-        epsilon = max(0.2, epsilon - 0.05)
+    elif cycle < 0: # 100:
+        epsilon = max(0.1, epsilon - 0.05)
         nfq.epsilon = epsilon
+    else:
+        nfq.epsilon = 0.0  
 
     print("NFQ Epsilon:", nfq.epsilon)
     # time.sleep(1)
@@ -295,7 +312,7 @@ for cycle in range(0, cycles):
     for _ in range(1):
         loop.run_episode(cycle + 1, max_steps=max_episode_length, pretty_printer=pp)
 
-    plot_swingup_state_history(plant=plant, filename="episode.eps")
+    plot_swingup_state_history(plant=plant, filename=f"episode-{ cycle }.eps")
 
     if cycle < num_cycles_rand_start:
         continue   # don't fit yet
@@ -326,9 +343,9 @@ for cycle in range(0, cycles):
         nfq.fit_normalizer(batch.observations, method="meanstd")
         
 
-    if cycle % 10 == 0 and cycle > 0:   
+    if cycle % 10 == 0 and cycle > 0 and cycle < 100:   
         nfq.fit_normalizer(batch.observations, method="meanstd")
-        iterations = 50
+        iterations = 20
 
     batch_size = max(
         256 * ((cycle // 20) + 1), batch.num_samples // 10
@@ -339,9 +356,9 @@ for cycle in range(0, cycles):
     nfq.fit(
         batch,
         costfunc=costfunc,
-        iterations=5, # iterations,
-        epochs= 10,
-        minibatch_size=256, #batch_size,
+        iterations=4, # iterations,
+        epochs= 8,
+        minibatch_size=2048, #batch_size,
         gamma=gamma,
         callbacks=[callback],
         verbose=1,

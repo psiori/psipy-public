@@ -22,11 +22,11 @@ import pandas as pd
 import zmq
 
 from psipy.rl import CM
-from psipy.rl.control import Controller
+from psipy.rl.core.controller import Controller
 from psipy.rl.io.sart import SARTReader
-from psipy.rl.plant import Action, Plant, State
+from psipy.rl.core.plant import Action, Plant, State
 
-from cartpole_control.plant.plc_zmq import Commands, HardwareComms
+from psipy.rl.plants.real.pact_cartpole.plc_zmq import Commands, HardwareComms
 
 __all__ = [
     "SwingupAction",
