@@ -410,7 +410,7 @@ for cycle in range(0, cycles):
             epochs= 8,
             minibatch_size=2048, #batch_size,
             gamma=gamma,
-#            callbacks=[callback],
+            callbacks=[callback],
             verbose=1,
         )
         nfq.save(f"model-latest")  # this is always saved to allow to continue training after
@@ -430,9 +430,13 @@ for cycle in range(0, cycles):
         metrics["wall_time_s"].append(episode_metrics["wall_time_s"])
         metrics["avg_cost"].append(episode_metrics["total_cost"] / episode_metrics["cycles_run"])
 
-        fig = plot_metrics(metrics, fig=fig, filename=f"metrics-latest.png")
-        if fig is not None:
-            fig.show()
+        print(">>> metrics['avg_cost']", metrics["avg_cost"])
+        print(metrics)
+        print(episode_metrics)
+
+#        fig = plot_metrics(metrics, fig=fig, filename=f"metrics-latest.png")
+#        if fig is not None:
+#            fig.show()
 
         avg_step_cost = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
 
