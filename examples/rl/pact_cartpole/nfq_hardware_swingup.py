@@ -19,20 +19,20 @@ Things to check:
 + immediate costs:  ---> fixed (see comments SL in costfunction)
 ++ "0" when up
 ++ "1" when down
--- large enough multiple in negative terminal state (e.g. 1000)
+++ large enough multiple in negative terminal state (e.g. 1000) (fixed)
 (+) zero action is real zero ---> presently 150 is neutral action! (SL)
-- correct handling of normalization on all axes including immediate reward and q target
-- * immediate reward of terminal state is used
-- * update in NFQ on terminal states is correct
-- goal state is NOT a terminal state
-- * state information to controller is correct (correct channels, plausible values)
-- * lookahead does work properly (include n last states PLUS actions)
++ correct handling of normalization on all axes including immediate reward and q target (looks fine)
+(+/-) immediate reward of terminal state is used (yes&no, see below)
+(+/-) update in NFQ on terminal states is correct (its somehow wrong and does not work properly, reason unclear (assumed scaling issue, its not the (only) cause), but worked around with non-terminal more expesive states surrounding terminal state)
++ goal state is NOT a terminal state
++ state information to controller is correct (correct channels, plausible values)
++ lookahead does work properly (include n last states PLUS actions)
 + end state of transition at t is the exact same as start state of transtion t+1
 (*) cycle time works properly and does not jitter (much)
 - we cause no delay of actions in busy, control and zmq pipes (crane OI learning to better check...)
-- repeat estimate of overall delay
-- if using mini batches, sample order is randomized
-* terminal due to bad angle??? --> what is this?
++ repeat estimate of overall delay
++ if using mini batches, sample order is randomized
++ terminal due to bad angle??? --> what is this?  (checked and fixed)
 - plot q, close plot
 
 
@@ -48,6 +48,8 @@ Improve:
 
 import glob
 import time
+import sys
+from getopt import getopt
 
 import numpy as np
 import tensorflow as tf
@@ -211,6 +213,7 @@ def create_fake_episodes(folder: str, lookback: int):
 
 plant = SwingupPlant(hilscher_port="5555", cost_func=costfunc, sway_start=False)#, 
 		   #  speed_values=(800, 400)) #SL speed_value1, speed_value2
+        
 ActionType = SwingupContinuousDiscreteAction # SL
 StateType = SwingupState
 lookback = 6
@@ -220,6 +223,25 @@ max_episode_length = EPS_STEPS
 load_network = False
 initial_fit = False
 
+try:
+    opts, args = getopt(sys.argv[1:], "hp:", ["help", "play="])
+except getopt.GetoptError as err:
+    print("Usage: python nfq_hardware_swingup.py [--play <model.zip>]")
+    sys.exit(2)
+
+play_model = None
+
+for opt, arg in opts:
+    if opt == "-h":
+        print("Usage: python nfq_hardware_swingup.py [--play <model.zip>]")
+        sys.exit()
+    elif opt in ("-p", "--play"):
+        play_model = NFQ.load(arg, custom_objects=[ActionType])
+
+if play_model is not None:
+    loop = Loop(plant, play_model, "Hardware Swingup", f"{sart_folder}-play")
+    loop.run_episode(1, max_steps=-1)
+    sys.exit()
 
 # Make the NFQ model
 if not load_network:
