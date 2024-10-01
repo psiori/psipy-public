@@ -913,15 +913,21 @@ def plot_swingup_state_history(
     for ax in axs:
         ax.clear()
 
+    axs[3].twinx().clear()
+
     axs[0].plot(x, label="cart_position")
     axs[0].set_title("cart_position")
     axs[0].set_ylabel("Position")
     axs[0].legend()
+    axs[0].relim()
+    axs[0].autoscale_view()
 
     axs[1].plot(t, label="pole_angle")
     axs[1].axhline(0, color="grey", linestyle=":", label="target")
     axs[1].set_title("Pole Angle")
+    axs[1].relim()
     axs[1].set_ylim((-3.15, 3.15))
+    axs[1].autoscale_view()
     axs[1].set_ylabel("Angle")
     axs[1].legend()
 
@@ -935,16 +941,27 @@ def plot_swingup_state_history(
     axs[3].set_title("Control")
     axs[3].set_ylabel("Velocity")
     axs[3].legend(loc="upper left")
+    axs[3].relim()
+    axs[3].autoscale_view()
+
     axs2b = axs[3].twinx()
     axs2b.plot(x_s, color="black", alpha=0.4, label="True Velocity")
     axs2b.set_ylabel("Steps/s")
     axs2b.legend(loc="upper right")
+    axs2b.relim()
+    axs2b.autoscale_view()
+
+    axs[3].relim()
+    axs[3].autoscale_view()
+
 
     if cost is not None:
         axs[4].plot(plant.df_history.cost, label="cost")
         axs[4].set_title("cost")
         axs[4].set_ylabel("cost")
         axs[4].legend()
+        axs[4].relim()
+        axs[4].autoscale_view()
 
     plt.suptitle("NFQ Controller on Physical Swingup Model")
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
@@ -953,6 +970,8 @@ def plot_swingup_state_history(
         #plt.close()
     else:
         plt.pause(0.01)
+
+    return fig
 
 
 if __name__ == "__main__":

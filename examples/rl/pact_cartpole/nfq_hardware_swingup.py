@@ -21,6 +21,8 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.keras.layers as tfkl
 
+from pprint import pprint
+
 from matplotlib import pyplot as plt
 from psipy.rl.controllers.nfq import NFQ, tanh2
 from psipy.rl.io.batch import Batch, Episode
@@ -369,10 +371,13 @@ def learn(plant,
           max_episode_length=400,
           refit_normalizer=True,
           do_eval=True):
+          
+    state_figure = None
 
     metrics = { "total_cost": [], "avg_cost": [], "cycles_run": [], "wall_time_s": [] }
-    min_avg_step_cost = 0.1    # if avg costs of an episode are less than 100+x% of this, we save the model
-    
+    min_avg_step_cost = 0.01    # only if avg costs of an episode are less than 100+x% of this, we potentially save the model (must be near the best)
+    min_eps_before_eval = 10    
+
     sart_folder = f"{sart_folder_base}-train"
     sart_folder_eval = f"{sart_folder_base}-eval"
 
@@ -430,7 +435,7 @@ def learn(plant,
         # fakes = create_fake_episodes(sart_folder, lookback, batch.num_samples)
         # batch.append(fakes)
 
-        plot_swingup_state_history(plant=plant, filename=f"episode-{ len(batch._episodes) }.eps")
+        state_figure = plot_swingup_state_history(plant=plant, filename=f"episode-{ len(batch._episodes) }.eps", fig = state_figure)
 
         if refit_normalizer and episode % 10 == 0 and episode < num_episodes / 2:   
             print("Refit the normalizer again using meanstd.")
@@ -475,7 +480,7 @@ def learn(plant,
 
             avg_step_cost = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
 
-            if avg_step_cost < min_avg_step_cost * 1.2:
+            if episode > min_eps_before_eval and avg_step_cost < min_avg_step_cost * 1.2:
                 print("Running {} ADDITIONAL EVALUATION repetitions because model is promising candidate for replacing the best model found so far...".format(eval_reps-1))
 
                 controller.epsilon = 0.0
@@ -502,6 +507,9 @@ def learn(plant,
             print(">>> metrics['avg_cost']", metrics["avg_cost"])
             print(">>> metrics", metrics)
             
+            with open('metrics-latest', 'wt') as out:
+                pprint(metrics, stream=out)
+            
             metrics_plot.update(metrics)
             metrics_plot.plot()
 
@@ -510,7 +518,7 @@ def learn(plant,
                 metrics_plot.save()
 
             if avg_step_cost < min_avg_step_cost * 1.1:
-                filename = f"model-candidate-{len(batch._episodes)}"
+                filename = "model-candidate-{}-avg_cost-{}".format(len(batch._episodes), str(avg_step_cost).replace(".", "_"))
                 print("Saving candidate model: ", filename)
                 controller.save(filename)
                            
@@ -545,7 +553,7 @@ if __name__ == "__main__":
     play_only = False
     controller = None
     sart_folder_base = "psidata-cartpole"
-    max_episode_length = 4
+    max_episode_length = 400
     play_after_initial_fit = False
     refit_normalization = True
 
