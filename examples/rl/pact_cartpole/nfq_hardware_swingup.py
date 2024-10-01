@@ -385,7 +385,7 @@ def learn(plant,
 
     epsilon_schedule = LinearSchedule(start=1.0,
                                       end=0.05,
-                                      num_episodes=num_episodes / 10)
+                                      num_episodes=num_episodes / 4)
   
     eval_reps = 4                                    
     
@@ -480,7 +480,7 @@ def learn(plant,
 
             avg_step_cost = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
 
-            if episode > min_eps_before_eval and avg_step_cost < min_avg_step_cost * 1.2:
+            if episode > min_eps_before_eval and avg_step_cost < min_avg_step_cost * 1.1:
                 print("Running {} ADDITIONAL EVALUATION repetitions because model is promising candidate for replacing the best model found so far...".format(eval_reps-1))
 
                 controller.epsilon = 0.0
@@ -517,7 +517,7 @@ def learn(plant,
                 print(">>>>>>>> SAVING PLOT <<<<<<<<<<<")
                 metrics_plot.save()
 
-            if avg_step_cost < min_avg_step_cost * 1.1:
+            if avg_step_cost < min_avg_step_cost * 1.075:
                 filename = "model-candidate-{}-avg_cost-{}".format(len(batch._episodes), str(avg_step_cost).replace(".", "_"))
                 print("Saving candidate model: ", filename)
                 controller.save(filename)
