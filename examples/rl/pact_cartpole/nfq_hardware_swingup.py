@@ -113,6 +113,29 @@ def make_model(n_inputs, n_outputs, lookback):
 
 # Define a custom cost function to change the inbuilt costs
 def costfunc(states: np.ndarray) -> np.ndarray:
+    center = (SwingupPlant.LEFT_SIDE + SwingupPlant.RIGHT_SIDE) / 2.0
+    margin = abs(SwingupPlant.RIGHT_SIDE - SwingupPlant.LEFT_SIDE) / 2.0 * 0.3  # 25% of distance from center to hard endstop
+
+    if np.ndim(states) == 1:
+        position = states[CART_POSITION_CHANNEL_IDX] # SL TODO: change, don't assume index 0 for position
+        theta = states[THETA_CHANNEL_IDX]             # SL TODO: if using cosine, needs to change 
+        theta_speed = states[THETA_CHANNEL_IDX + 1]   
+
+        to_fast = abs(theta_speed) > 0.45
+
+        if position + SwingupPlant.LEFT_SIDE<= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET or position >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET:
+            return 1.0
+
+        if position + SwingupPlant.LEFT_SIDE<= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET * 2 or position >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET * 2:
+            return 0.1
+          
+        
+        if abs(position - center) > margin:
+            return 0.011
+            
+        return (1.0-(theta+1.0)/2.0) / 100.0 + (abs(theta_speed) > 0.42) * (abs(theta_speed) - 0.42) / 5.0 #SL orig: tanh2(theta, C=0.01,
+
+
     position = states[:, CART_POSITION_CHANNEL_IDX] # SL TODO: change, don't assume index 0 for position
     theta = states[:, THETA_CHANNEL_IDX]             # SL TODO: if using cosine, needs to change 
     theta_speed = states[:, THETA_CHANNEL_IDX + 1]   
@@ -130,8 +153,6 @@ def costfunc(states: np.ndarray) -> np.ndarray:
 
     # PROBLEM: for terminals, we need to check raw, unmoved position (no moved zero), but we can't compute here and lack information about the zero shift. Thus, use the lEFT_SIDE, because we know, in default param setup thats the zero. Also problem: if we move zero, MDP is not markov, because we cant derive positions of bounds from state :(
 
-    center = (SwingupPlant.LEFT_SIDE + SwingupPlant.RIGHT_SIDE) / 2.0
-    margin = abs(SwingupPlant.RIGHT_SIDE - SwingupPlant.LEFT_SIDE) / 2.0 * 0.3  # 25% of distance from center to hard endstop
 
     if position.size > 1:  # SL: original version did not work if passed single states
         costs[abs(position - center) > margin] = 0.011
@@ -213,7 +234,7 @@ def create_fake_episodes(folder: str, lookback: int):
     # yield Episode(o, a, t, c, **kwargs)
 
 
-plant = SwingupPlant(hilscher_port="5555", cost_func=costfunc, sway_start=False)#, 
+plant = SwingupPlant(hilscher_port="5555", sway_start=False, cost_function=costfunc)#, 
 		   #  speed_values=(800, 400)) #SL speed_value1, speed_value2
         
 ActionType = SwingupContinuousDiscreteAction # SL
@@ -224,14 +245,13 @@ max_episode_length = EPS_STEPS
 
 load_network = False
 initial_fit = False
+play_model = None
 
 try:
-    opts, args = getopt(sys.argv[1:], "hp:", ["help", "play="])
+    opts, args = getopt(sys.argv[1:], "hp:", ["help", "play=", "initial-fit"])
 except getopt.GetoptError as err:
     print("Usage: python nfq_hardware_swingup.py [--play <model.zip>]")
     sys.exit(2)
-
-play_model = None
 
 for opt, arg in opts:
     if opt == "-h":
@@ -239,6 +259,8 @@ for opt, arg in opts:
         sys.exit()
     elif opt in ("-p", "--play"):
         play_model = NFQ.load(arg, custom_objects=[ActionType])
+    elif opt == "--initial-fit":
+        initial_fit = True
 
 if play_model is not None:
     loop = Loop(plant, play_model, "Hardware Swingup", f"{sart_folder}-play")
@@ -332,24 +354,24 @@ if initial_fit:
     # Fit the normalizer
     nfq.fit_normalizer(batch.observations, method="meanstd")
 
-    batch_size = max(512, batch.num_samples // 10)
-    print(f"Batch size: {batch_size}/{batch.num_samples}")
+    # batch_size = max(512, batch.num_samples // 10)
+    # print(f"Batch size: {batch_size}/{batch.num_samples}")
 
     # Fit the controller
     try:
         nfq.fit(
             batch,
             costfunc=costfunc,
-            iterations=50,
-            epochs=20,
-            minibatch_size=batch_size,
+            iterations=75,
+            epochs=8,
+            minibatch_size=2048,
             gamma=gamma,
             callbacks=[callback],
             verbose=0,
         )
     except KeyboardInterrupt:
         pass
-    nfq.save(net_name)
+    nfq.save("model-initial-fit")
 
 
 start_time = time.time()
@@ -361,7 +383,7 @@ pp = LoopPrettyPrinter(costfunc)
 num_cycles_rand_start = 0
 
 metrics = { "total_cost": [], "avg_cost": [], "cycles_run": [], "wall_time_s": [] }
-min_avg_step_cost = 0.01  # if avg costs of an episode are less than 105% of this, we save the model
+min_avg_step_cost = 0.02    # if avg costs of an episode are less than 105% of this, we save the model
 
 fig = None
 do_eval = True
@@ -437,8 +459,8 @@ for cycle in range(0, cycles):
             verbose=1,
         )
         try:
-            os.rename("model-latest", "model-latest-backup")
-        except KeyboardInterrupt:
+            os.rename("model-latest.zip", "model-latest-backup.zip")
+        except OSError:
             pass
         nfq.save(f"model-latest")  # this is always saved to allow to continue training after
     except KeyboardInterrupt:
@@ -467,7 +489,7 @@ for cycle in range(0, cycles):
 
         avg_step_cost = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
 
-        if avg_step_cost < min_avg_step_cost * 1.05:
+        if avg_step_cost < min_avg_step_cost * 1.1:
             filename = f"model-candidate-{len(batch._episodes)}"
             print("Saving candidate model: ", filename)
             nfq.save(filename)
@@ -475,7 +497,7 @@ for cycle in range(0, cycles):
         if avg_step_cost < min_avg_step_cost:
             min_avg_step_cost = avg_step_cost
             try:
-                os.rename("model-very_best", "model-second_best")
+                os.rename("model-very_best.zip", "model-second_best.zip")
             except OSError:
                 pass
             nfq.save("model-very_best")

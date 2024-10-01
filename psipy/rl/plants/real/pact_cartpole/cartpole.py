@@ -222,10 +222,10 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         backward_compatible: bool = False,
         sway_start:bool=True,
         evaluate:bool=False,
-        cost_func: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+        cost_function: Optional[Callable[[np.ndarray], np.ndarray]] = None,
         controller: Optional[Controller] = None,
     ):
-        super().__init__()
+        super().__init__(cost_function=cost_function)
         self.comms_initialized = False
         # self.ctx = zmq.Context()
         self.hostname = hostname
@@ -270,7 +270,7 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         self.df_history = pd.DataFrame(columns=SwingupState.channels())
 
         # ZMQ returns
-        self._costfunc = cost_func
+        #self._costfunc = cost_func
         self._controller = controller
         self._current_state = None
 
@@ -402,8 +402,8 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
 
         cost = ""
         q = ""
-        if self._costfunc and self._current_state:
-            cost = self._costfunc(self._current_state.as_array()[None, ...])[0]
+        if self._cost_function and self._current_state:
+            cost = self._cost_function(self._current_state.as_array()[None, ...])[0]
         if self._controller:
             try:
                 stack = self._controller._memory.stack[None, ...]
