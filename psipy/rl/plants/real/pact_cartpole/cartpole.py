@@ -867,6 +867,7 @@ def plot_swingup_state_history(
     plant: Optional[SwingupPlant] = None,
     filename: Optional[str] = None,
     sart_path: Optional[str] = None,
+    fig: Optional[plt.Figure] = None,
 ) -> None:
     """Creates a plot that details the controller behavior.
 
@@ -903,7 +904,15 @@ def plot_swingup_state_history(
         a = plant.df_history.direction_ACT
         cost = plant.df_history.cost
 
-    fig, axs = plt.subplots(5, figsize=(10, 8))
+    if fig is None:
+        fig, axs = plt.subplots(5, figsize=(10, 8))
+    else:
+        plt.figure(fig.number)
+        axs = fig.axes
+
+    for ax in axs:
+        ax.clear()
+
     axs[0].plot(x, label="cart_position")
     axs[0].set_title("cart_position")
     axs[0].set_ylabel("Position")
@@ -941,9 +950,9 @@ def plot_swingup_state_history(
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     if filename:
         plt.savefig(filename)
-        plt.close()
+        #plt.close()
     else:
-        plt.show()
+        plt.pause(0.01)
 
 
 if __name__ == "__main__":
