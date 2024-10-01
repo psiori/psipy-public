@@ -641,7 +641,7 @@ class NFQ(Controller):
         train_model.compile(
             optimizer=self._optimizer,
             loss="MSE",
-            metrics=[avg_qdelta, min_q, avg_q, max_q],  # median_q
+            metrics=[avg_qdelta, min_q, avg_q, median_q, max_q],  # median_q
         )
         # Workaround for `AssertionError`s seen during multi-threaded fit.
         # NOTE: No longer needed with tf2.2+?
