@@ -482,31 +482,38 @@ def learn(plant,
             avg_step_cost = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
 
             if avg_step_cost < min_avg_step_cost * 1.2:
+                print("Running {} ADDITIONAL EVALUATION repetitions because model is promising candidate for replacing the best model found so far...".format(eval_reps-1))
+
                 controller.epsilon = 0.0
                 eval_loop.run(eval_reps-1, max_episode_steps=max_episode_length)
                 controller.epsilon = old_epsilon
                 
                 print(eval_loop.metrics)
                 
-               
+                episode_metrics["cycles_run"] += sum(eval_loop.metrics[i]["cycles_run"] for i in range(1, eval_reps))
+                episode_metrics["total_cost"] += sum(eval_loop.metrics[i]["total_cost"] for i in range(1, eval_reps))
+                episode_metrics["wall_time_s"] += sum(eval_loop.metrics[i]["wall_time_s"] for i in range(1, eval_reps))
+
+                episode_metrics["cycles_run"] = episode_metrics["cycles_run"] / eval_reps
+                episode_metrics["total_cost"] = episode_metrics["total_cost"] / eval_reps
+                episode_metrics["wall_time_s"] = episode_metrics["wall_time_s"] / eval_reps
+                episode_metrics["avg_cost"] = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
+
+                avg_step_cost = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
                 
-                            metrics["total_cost"].append(episode_metrics["total_cost"])
+            metrics["total_cost"].append(episode_metrics["total_cost"])
             metrics["cycles_run"].append(episode_metrics["cycles_run"])
             metrics["wall_time_s"].append(episode_metrics["wall_time_s"])
-            metrics["avg_cost"].append(episode_metrics["total_cost"] / episode_metrics["cycles_run"])
-                
-                metrics["
-                
-                sys.exit()
-                
-                
-            
+            metrics["avg_cost"].append(episode_metrics["avg_cost"])
+
+            print(">>> metrics['avg_cost']", metrics["avg_cost"])
+            print(">>> metrics", metrics)
+
+            if avg_step_cost < min_avg_step_cost * 1.1:
                 filename = f"model-candidate-{len(batch._episodes)}"
                 print("Saving candidate model: ", filename)
                 controller.save(filename)
-                
-           
-
+                           
             if avg_step_cost < min_avg_step_cost:
                 min_avg_step_cost = avg_step_cost
                 try:
