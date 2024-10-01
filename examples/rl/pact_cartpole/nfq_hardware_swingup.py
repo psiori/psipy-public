@@ -28,13 +28,12 @@ from psipy.rl.io.batch import Batch, Episode
 from psipy.rl.io.sart import SARTReader
 from psipy.rl.loop import Loop, LoopPrettyPrinter
 from psipy.rl.visualization.plotting_callback import PlottingCallback
-from tensorflow.keras import layers as tfkl
 
 from psipy.rl.plants.real.pact_cartpole.cartpole import (
     SwingupContinuousDiscreteAction,
     SwingupPlant,
     SwingupState,
-    plot_swingup_state_history
+#    plot_swingup_state_history
 )
 
 
@@ -243,8 +242,6 @@ def plot_metrics(metrics, fig=None, filename=None):
 
 
 
-
-
 start_time = time.time()
 
 pp = LoopPrettyPrinter(costfunc)
@@ -328,23 +325,21 @@ def initial_fit(controller,
     print("Initial fitting with data from {} for {} iterations with {} epochs each and minibatch size of {}.".format(sart_folder, td_iterations, epochs_per_iteration, minibatch_size))
 
     print("Fitting normalizer...")
-    nfq.fit_normalizer(batch.observations, method="meanstd")
+    controller.fit_normalizer(batch.observations, method="meanstd")
 
     callbacks = [callback] if callback is not None else None
 
     # Fit the controller
     print("Initial fitting of controller...")
     try:
-        nfq.fit(
-            batch,
-            costfunc=costfunc,
-            iterations=td_iterations,
-            epochs=epochs_per_iteration,
-            minibatch_size=minibatch_size,
-            gamma=gamma,
-            callbacks=callbacks,
-            verbose=verbose,
-        )
+        controller.fit(batch,
+                       costfunc=costfunc,
+                       iterations=td_iterations,
+                       epochs=epochs_per_iteration,
+                       minibatch_size=minibatch_size,
+                       gamma=gamma,
+                       callbacks=callbacks,
+                       verbose=verbose)
     except KeyboardInterrupt:
         pass
     controller.save("model-initial-fit")    
