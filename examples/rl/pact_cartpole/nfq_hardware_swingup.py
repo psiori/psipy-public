@@ -176,7 +176,7 @@ gamma = 0.98
 
 
 callback = PlottingCallback(
-    ax1="q", is_ax1=lambda x: x.endswith("q"), ax2="mse", is_ax2=lambda x: x == "avg_qdelta"
+    ax1="q", is_ax1=lambda x: x.endswith("q"), ax2="ME", is_ax2=lambda x: x.endswith("qdelta")
 )
 
 
@@ -192,7 +192,7 @@ class RLMetricsPlot:
         self.fig = None
         self.ax = None
         self.dirty = True
-        self.window_size = 7
+        self.window_size = 3
 
     def update(self, metrics):
         self.metrics = metrics
@@ -220,6 +220,8 @@ class RLMetricsPlot:
 
         if self.window_size > len(self.metrics["avg_cost"]):
             return
+            
+        self.ax.clear()
     
         #print(">>> metrics['avg_cost']", metrics["avg_cost"])
     
@@ -242,6 +244,7 @@ class RLMetricsPlot:
         self.ax.set_title("Average Cost")
         self.ax.set_ylabel("Cost per step")
         self.ax.legend()
+        
 
         if self._is_notebook():
             self.fig.canvas.draw()
@@ -368,7 +371,7 @@ def learn(plant,
           do_eval=True):
 
     metrics = { "total_cost": [], "avg_cost": [], "cycles_run": [], "wall_time_s": [] }
-    min_avg_step_cost = 0.01    # if avg costs of an episode are less than 100+x% of this, we save the model
+    min_avg_step_cost = 0.1    # if avg costs of an episode are less than 100+x% of this, we save the model
     
     sart_folder = f"{sart_folder_base}-train"
     sart_folder_eval = f"{sart_folder_base}-eval"
@@ -378,6 +381,9 @@ def learn(plant,
     epsilon_schedule = LinearSchedule(start=1.0,
                                       end=0.05,
                                       num_episodes=num_episodes / 10)
+  
+    eval_reps = 4                                    
+    
     try:
         batch = Batch.from_hdf5(
             sart_folder,
@@ -411,7 +417,7 @@ def learn(plant,
         print("NFQ Epsilon:", controller.epsilon)
 
         loop.run_episode(episode, max_steps=max_episode_length, pretty_printer=pp)
-        episode += 1
+
 
         # Load the collected data
         batch = Batch.from_hdf5(
@@ -457,19 +463,15 @@ def learn(plant,
         if do_eval:
             old_epsilon = controller.epsilon
             controller.epsilon = 0.0
-            eval_loop.run(1, max_episode_steps=400)
+            eval_loop.run(1, max_episode_steps=max_episode_length)
             controller.epsilon = old_epsilon
 
             episode_metrics = eval_loop.metrics[1] # only one episode was run
 
-            metrics["total_cost"].append(episode_metrics["total_cost"])
-            metrics["cycles_run"].append(episode_metrics["cycles_run"])
-            metrics["wall_time_s"].append(episode_metrics["wall_time_s"])
-            metrics["avg_cost"].append(episode_metrics["total_cost"] / episode_metrics["cycles_run"])
 
-            print(">>> metrics['avg_cost']", metrics["avg_cost"])
-            print(metrics)
-            print(episode_metrics)
+            #print(">>> metrics['avg_cost']", metrics["avg_cost"])
+            #print(metrics)
+            print(">>> EPISODE METRICS: ", episode_metrics)
 
             metrics_plot.update(metrics)
             metrics_plot.plot()
@@ -479,10 +481,31 @@ def learn(plant,
 
             avg_step_cost = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
 
-            if avg_step_cost < min_avg_step_cost * 1.075:
+            if avg_step_cost < min_avg_step_cost * 1.2:
+                controller.epsilon = 0.0
+                eval_loop.run(eval_reps-1, max_episode_steps=max_episode_length)
+                controller.epsilon = old_epsilon
+                
+                print(eval_loop.metrics)
+                
+               
+                
+                            metrics["total_cost"].append(episode_metrics["total_cost"])
+            metrics["cycles_run"].append(episode_metrics["cycles_run"])
+            metrics["wall_time_s"].append(episode_metrics["wall_time_s"])
+            metrics["avg_cost"].append(episode_metrics["total_cost"] / episode_metrics["cycles_run"])
+                
+                metrics["
+                
+                sys.exit()
+                
+                
+            
                 filename = f"model-candidate-{len(batch._episodes)}"
                 print("Saving candidate model: ", filename)
                 controller.save(filename)
+                
+           
 
             if avg_step_cost < min_avg_step_cost:
                 min_avg_step_cost = avg_step_cost
@@ -492,6 +515,8 @@ def learn(plant,
                     pass
 
                 controller.save("model-very_best")
+
+        episode += 1
 
     print("Elapsed time:", time.time() - start_time)
 
@@ -512,12 +537,13 @@ if __name__ == "__main__":
     play_only = False
     controller = None
     sart_folder_base = "psidata-cartpole"
-    max_episode_length = 400
+    max_episode_length = 4
     play_after_initial_fit = False
+    refit_normalization = True
 
     try:
-        opts, args = getopt(sys.argv[1:], "hfps:l:",
-                            ["help", "play-only", "initial-fit", "sart-folder-base=", "load-model="])
+        opts, args = getopt(sys.argv[1:], "hfps:l:r:",
+                            ["help", "play-only", "initial-fit", "sart-folder-base=", "load-model=", "refit="])
     except getopt.GetoptError as err:
         print("Usage: python nfq_hardware_swingup.py [--play <model.zip>]")
         sys.exit(2)
@@ -535,6 +561,8 @@ if __name__ == "__main__":
         elif opt in ("l", "--load-model"):
             print("Loading controller from file with name: ", arg)
             controller = NFQ.load(arg, custom_objects=[ActionType])
+        elif opt in ("r", "--refit-normalization"):
+            refit_normalization = not(not(arg))
 
     plant = SwingupPlant(hilscher_port="5555",
                          sway_start=False,
@@ -573,7 +601,8 @@ if __name__ == "__main__":
                   controller, 
                   sart_folder_base=sart_folder_base, 
                   num_episodes=200,
-                  max_episode_length=max_episode_length)
+                  max_episode_length=max_episode_length,
+                  refit_normalizer=refit_normalization)
 
 
 
