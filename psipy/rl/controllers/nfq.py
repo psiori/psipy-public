@@ -636,6 +636,9 @@ class NFQ(Controller):
         
         def avg_qdelta(y_true, y_preds):
             return tf.reduce_mean(tf.abs(y_preds-y_true))  # mean absolute error, easier to interpret than loss/MSE
+    
+        def median_qdelta(y_true, y_preds):
+            return tfp.stats.percentile(tf.abs(y_preds-y_true), 50)
 
         # Model used for training. Gradient decent through a single output unit which
         # is picked by `act_in` -- the action previously executed in state.
@@ -643,7 +646,7 @@ class NFQ(Controller):
         train_model.compile(
             optimizer=self._optimizer,
             loss="MSE",
-            metrics=[avg_qdelta, min_q, avg_q, median_q, max_q],  # median_q
+            metrics=[avg_qdelta, median_qdelta, min_q, avg_q, max_q],  # median_q
         )
         # Workaround for `AssertionError`s seen during multi-threaded fit.
         # NOTE: No longer needed with tf2.2+?

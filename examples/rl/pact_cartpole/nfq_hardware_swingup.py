@@ -35,7 +35,7 @@ from psipy.rl.plants.real.pact_cartpole.cartpole import (
     SwingupContinuousDiscreteAction,
     SwingupPlant,
     SwingupState,
-#    plot_swingup_state_history
+    plot_swingup_state_history
 )
 
 
@@ -192,7 +192,7 @@ class RLMetricsPlot:
         self.fig = None
         self.ax = None
         self.dirty = True
-        self.window_size = 3
+        self.window_size = 7
 
     def update(self, metrics):
         self.metrics = metrics
@@ -430,7 +430,7 @@ def learn(plant,
         # fakes = create_fake_episodes(sart_folder, lookback, batch.num_samples)
         # batch.append(fakes)
 
-        # plot_swingup_state_history(plant=plant, filename=f"episode-{ len(batch._episodes) }.eps")
+        plot_swingup_state_history(plant=plant, filename=f"episode-{ len(batch._episodes) }.eps")
 
         if refit_normalizer and episode % 10 == 0 and episode < num_episodes / 2:   
             print("Refit the normalizer again using meanstd.")
@@ -473,12 +473,6 @@ def learn(plant,
             #print(metrics)
             print(">>> EPISODE METRICS: ", episode_metrics)
 
-            metrics_plot.update(metrics)
-            metrics_plot.plot()
-
-            if metrics_plot.filename is not None:
-                metrics_plot.save()
-
             avg_step_cost = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
 
             if avg_step_cost < min_avg_step_cost * 1.2:
@@ -497,17 +491,23 @@ def learn(plant,
                 episode_metrics["cycles_run"] = episode_metrics["cycles_run"] / eval_reps
                 episode_metrics["total_cost"] = episode_metrics["total_cost"] / eval_reps
                 episode_metrics["wall_time_s"] = episode_metrics["wall_time_s"] / eval_reps
-                episode_metrics["avg_cost"] = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
 
                 avg_step_cost = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
                 
             metrics["total_cost"].append(episode_metrics["total_cost"])
             metrics["cycles_run"].append(episode_metrics["cycles_run"])
             metrics["wall_time_s"].append(episode_metrics["wall_time_s"])
-            metrics["avg_cost"].append(episode_metrics["avg_cost"])
+            metrics["avg_cost"].append(avg_step_cost)
 
             print(">>> metrics['avg_cost']", metrics["avg_cost"])
             print(">>> metrics", metrics)
+            
+            metrics_plot.update(metrics)
+            metrics_plot.plot()
+
+            if metrics_plot.filename is not None:
+                print(">>>>>>>> SAVING PLOT <<<<<<<<<<<")
+                metrics_plot.save()
 
             if avg_step_cost < min_avg_step_cost * 1.1:
                 filename = f"model-candidate-{len(batch._episodes)}"
@@ -515,6 +515,7 @@ def learn(plant,
                 controller.save(filename)
                            
             if avg_step_cost < min_avg_step_cost:
+                print("Saving very best model")
                 min_avg_step_cost = avg_step_cost
                 try:
                     os.rename("model-very_best.zip", "model-second_best.zip")
