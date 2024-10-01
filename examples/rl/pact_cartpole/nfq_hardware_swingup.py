@@ -28,6 +28,9 @@ from psipy.rl.io.sart import SARTReader
 from psipy.rl.loop import Loop, LoopPrettyPrinter
 from psipy.rl.visualization.plotting_callback import PlottingCallback
 
+from psipy.core.notebook_tools import is_notebook
+
+
 from psipy.rl.plants.real.pact_cartpole.cartpole import (
     SwingupContinuousDiscreteAction,
     SwingupPlant,
@@ -177,47 +180,81 @@ callback = PlottingCallback(
 )
 
 
-def plot_metrics(metrics, fig=None, filename=None):
-    if fig is not None:
-        fig.clear()
-    else:
-        fig = plt.figure(1,  figsize=(10, 8))
+class RLMetricsPlot:
+    def __init__(self, metrics=None, filename=None):
+        self.metrics = metrics if metrics is not None else { 
+            "total_cost": [], 
+            "avg_cost": [], 
+            "cycles_run": [],
+            "wall_time_s": [] 
+        }
+        self.filename = filename
+        self.fig = None
+        self.ax = None
+        self.dirty = True
+        self.window_size = 7
 
-    axs = fig.subplots(1)
+    def update(self, metrics):
+        self.metrics = metrics
+        self.dirty = True
 
-    window_size = 7
+    def plot(self):
+        self._maybe_plot()
+    
+    def save(self, filename=None):
+        filename = self.filename if filename is None else filename
+        self._maybe_plot()
+        self.fig.savefig(filename)
 
-    if window_size > len(metrics["avg_cost"]):
-        return
-    
-    #print(">>> metrics['avg_cost']", metrics["avg_cost"])
-    
-    # Calculate moving average and variance
-    avg_cost = np.array(metrics["avg_cost"])
-    moving_avg = np.convolve(avg_cost, np.ones(window_size)/window_size, mode='same')
-    
-    # Calculate moving variance
-    moving_var = np.convolve(avg_cost**2, np.ones(window_size)/window_size, mode='same') - moving_avg**2
-    moving_std = np.sqrt(moving_var)
-    
-    # Plot original data, moving average, and variance
-    x = range(len(avg_cost))
-    x_valid = x # range(window_size-1, len(avg_cost))
-    
-    axs.plot(x_valid, avg_cost, label="avg_cost", alpha=0.3, color='gray')
-    axs.plot(x_valid, moving_avg, label="moving average", color='blue')
-    axs.fill_between(x_valid, moving_avg - moving_std, moving_avg + moving_std, alpha=0.2, color='blue', label='±1 std dev')
-    
-    axs.set_title("Average Cost")
-    axs.set_ylabel("Cost per step")
-    axs.legend()
+    def _is_notebook(self):
+        return is_notebook()  # there is a shared implementation provided by psipy.core.notebook_tools
 
-    fig.canvas.draw()
+    def _maybe_plot(self):
+        if not self.dirty:
+            return
 
-    if filename is not None:
-        fig.savefig(filename)
+        if self.fig is None:
+            self.fig, self.ax = plt.subplots(figsize=(10, 8))
+        elif not self._is_notebook():
+            plt.figure(self.fig.number)
 
-    return fig
+        if self.window_size > len(self.metrics["avg_cost"]):
+            return
+    
+        #print(">>> metrics['avg_cost']", metrics["avg_cost"])
+    
+        # Calculate moving average and variance
+        avg_cost = np.array(self.metrics["avg_cost"])
+        moving_avg = np.convolve(avg_cost, np.ones(self.window_size)/self.window_size, mode='same')
+    
+        # Calculate moving variance
+        moving_var = np.convolve(avg_cost**2, np.ones(self.window_size)/self.window_size, mode='same') - moving_avg**2
+        moving_std = np.sqrt(moving_var)
+    
+        # Plot original data, moving average, and variance
+        x = range(len(avg_cost))
+        x_valid = x # range(window_size-1, len(avg_cost))
+    
+        self.ax.plot(x_valid, avg_cost, label="avg_cost", alpha=0.3, color='gray')
+        self.ax.plot(x_valid, moving_avg, label="moving average", color='blue')
+        self.ax.fill_between(x_valid, moving_avg - moving_std, moving_avg + moving_std, alpha=0.2, color='blue', label='±1 std dev')
+    
+        self.ax.set_title("Average Cost")
+        self.ax.set_ylabel("Cost per step")
+        self.ax.legend()
+
+        if self._is_notebook():
+            self.fig.canvas.draw()
+        else:
+            # This is what makes it live
+            # If you get
+            #   AttributeError: type object 'FigureCanvasBase'
+            #     has no attribute 'start_event_loop_default'
+            # you are in a notebook and either you did not set
+            # 'in_notebook' to True, or it wasn't detected correctly.
+            plt.pause(0.01)      
+
+        self.dirty = False
 
 
 
@@ -361,6 +398,8 @@ def learn(plant,
     except OSError:
         print("No saved episodes found, starting from scratch.")
 
+    metrics_plot = RLMetricsPlot(filename="metrics-latest.png")
+
     loop = Loop(plant, controller, "Hardware Swingup", sart_folder)
     eval_loop = Loop(plant, controller, "Hardware Swingup", sart_folder_eval)
 
@@ -432,9 +471,11 @@ def learn(plant,
             print(metrics)
             print(episode_metrics)
 
-#        fig = plot_metrics(metrics, fig=fig, filename=f"metrics-latest.png")
-#        if fig is not None:
-#            fig.show()
+            metrics_plot.update(metrics)
+            metrics_plot.plot()
+
+            if metrics_plot.filename is not None:
+                metrics_plot.save()
 
             avg_step_cost = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
 
