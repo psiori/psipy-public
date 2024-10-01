@@ -6,7 +6,9 @@ from typing import Callable, Dict, List, Optional, Tuple, Type, Union, cast
 
 import numpy as np
 import tensorflow as tf
+import tensorflow_probability as tfp
 from tensorflow.keras.utils import Sequence
+import keras
 
 from psipy.core.io import MemoryZipFile
 from psipy.nn.layers import ExpandDims, Squeeze
@@ -623,8 +625,8 @@ class NFQ(Controller):
         def avg_q(y_true, y_preds):
             return tf.reduce_mean(y_preds)
 
-        def median_q(*args):
-            return tf.contrib.distributions.percentile(qs, 50.0)
+        def median_q(y_true, y_preds):
+            return tfp.stats.percentile(y_preds, 50)
 
         def min_q(y_true, y_preds):
             return tf.reduce_min(y_preds)

@@ -362,8 +362,8 @@ if initial_fit:
         nfq.fit(
             batch,
             costfunc=costfunc,
-            iterations=75,
-            epochs=8,
+            iterations=2000,
+            epochs=1,
             minibatch_size=2048,
             gamma=gamma,
             callbacks=[callback],
