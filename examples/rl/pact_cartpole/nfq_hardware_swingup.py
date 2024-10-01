@@ -9,9 +9,6 @@
 In order to connect, you need to follow the instructions in :class:`SwingupPlant`.
 """
 
-
-
-
 import glob
 import time
 import sys
@@ -22,6 +19,8 @@ from getopt import getopt
 
 import numpy as np
 import tensorflow as tf
+import tensorflow.keras.layers as tfkl
+
 from matplotlib import pyplot as plt
 from psipy.rl.controllers.nfq import NFQ, tanh2
 from psipy.rl.io.batch import Batch, Episode
@@ -67,26 +66,6 @@ def make_model(n_inputs, n_outputs, lookback):
 def costfunc(states: np.ndarray) -> np.ndarray:
     center = (SwingupPlant.LEFT_SIDE + SwingupPlant.RIGHT_SIDE) / 2.0
     margin = abs(SwingupPlant.RIGHT_SIDE - SwingupPlant.LEFT_SIDE) / 2.0 * 0.3  # 25% of distance from center to hard endstop
-
-    if np.ndim(states) == 1:
-        position = states[CART_POSITION_CHANNEL_IDX] # SL TODO: change, don't assume index 0 for position
-        theta = states[THETA_CHANNEL_IDX]             # SL TODO: if using cosine, needs to change 
-        theta_speed = states[THETA_CHANNEL_IDX + 1]   
-
-        to_fast = abs(theta_speed) > 0.45
-
-        if position + SwingupPlant.LEFT_SIDE<= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET or position >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET:
-            return 1.0
-
-        if position + SwingupPlant.LEFT_SIDE<= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET * 2 or position >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET * 2:
-            return 0.1
-          
-        
-        if abs(position - center) > margin:
-            return 0.011
-            
-        return (1.0-(theta+1.0)/2.0) / 100.0 + (abs(theta_speed) > 0.42) * (abs(theta_speed) - 0.42) / 5.0 #SL orig: tanh2(theta, C=0.01,
-
 
     position = states[:, CART_POSITION_CHANNEL_IDX] # SL TODO: change, don't assume index 0 for position
     theta = states[:, THETA_CHANNEL_IDX]             # SL TODO: if using cosine, needs to change 
@@ -248,8 +227,7 @@ pp = LoopPrettyPrinter(costfunc)
 
 num_cycles_rand_start = 0
 
-metrics = { "total_cost": [], "avg_cost": [], "cycles_run": [], "wall_time_s": [] }
-min_avg_step_cost = 0.02    # if avg costs of an episode are less than 105% of this, we save the model
+
 
 fig = None
 do_eval = True
@@ -351,6 +329,9 @@ def learn(plant,
           max_episode_length=400,
           refit_normalizer=True,
           do_eval=True):
+
+    metrics = { "total_cost": [], "avg_cost": [], "cycles_run": [], "wall_time_s": [] }
+    min_avg_step_cost = 0.01    # if avg costs of an episode are less than 100+x% of this, we save the model
     
     sart_folder = f"{sart_folder_base}-train"
     sart_folder_eval = f"{sart_folder_base}-eval"
@@ -370,7 +351,13 @@ def learn(plant,
         )
         print(f"Found {len(batch._episodes)} episodes in {sart_folder}. Will use these for fitting and continue with episode {len(batch._episodes)}")
 
+        if refit_normalizer:
+            print("Refit the normalizer again using meanstd.")
+            controller.fit_normalizer(batch.observations, method="meanstd")
+
         episode = len(batch._episodes)
+        
+
     except OSError:
         print("No saved episodes found, starting from scratch.")
 
@@ -451,7 +438,7 @@ def learn(plant,
 
             avg_step_cost = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
 
-            if avg_step_cost < min_avg_step_cost * 1.1:
+            if avg_step_cost < min_avg_step_cost * 1.075:
                 filename = f"model-candidate-{len(batch._episodes)}"
                 print("Saving candidate model: ", filename)
                 controller.save(filename)
