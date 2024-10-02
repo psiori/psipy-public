@@ -318,12 +318,12 @@ class ModuloWrapperSchedule(Schedule):
 
 def initial_fit(controller,
                 sart_folder="psidata-cartpole-train", 
-                td_iterations=200, 
-                epochs_per_iteration=1,
+                td_iterations=100, 
+                epochs_per_iteration=8,
                 minibatch_size=2048,
                 callback=None,
-                verbose=False,
-                final_fit=True):
+                verbose=True,
+                final_fit=False):
 
     # Load the collected data
     batch = Batch.from_hdf5(
@@ -358,20 +358,26 @@ def initial_fit(controller,
                        gamma=gamma,
                        callbacks=callbacks,
                        verbose=verbose)
-
-            # Fit the controller
-        controller.fit(
-            batch,
-            costfunc=costfunc,
-            iterations=10, # iterations,
-            epochs= 10,
-            minibatch_size=2048, #batch_size,
-            gamma=gamma,
-            callbacks=[callback],
-            verbose=1,
-        )
     except KeyboardInterrupt:
         pass
+
+    try:
+        if final_fit:
+                        # Fit the controller
+            controller.fit(
+                batch,
+                costfunc=costfunc,
+                iterations=25, # iterations,
+                epochs= 8,
+                minibatch_size=2048, #batch_size,
+                gamma=gamma,
+                callbacks=[callback],
+                verbose=verbose,
+            )
+
+    except KeyboardInterrupt:
+        pass
+
     controller.save("model-initial-fit")    
 
 def learn(plant, 

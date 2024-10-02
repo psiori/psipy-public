@@ -132,6 +132,7 @@ class PlottingCallback(tf.keras.callbacks.Callback):
         self._is_ax2 = lambda m: False
         if ax2 is not None:
             self.ax2.set_ylabel(ax2)
+            self.ax2.set_yscale('log')
             self._has_ax2 = True
             self._is_ax2 = lambda m: m == ax2
         if is_ax2 is not None:
@@ -141,6 +142,7 @@ class PlottingCallback(tf.keras.callbacks.Callback):
         self._is_ax1 = lambda m: not self._is_ax2(m)
         if ax1 is not None:
             self.ax.set_ylabel(ax1)
+            self.ax.set_yscale('log')
             self._is_ax1 = lambda m: m == ax1
         if is_ax1 is not None:
             self._is_ax1 = is_ax1
