@@ -76,9 +76,7 @@ def costfunc(states: np.ndarray) -> np.ndarray:
     theta = states[:, THETA_CHANNEL_IDX]             # SL TODO: if using cosine, needs to change 
     theta_speed = states[:, THETA_CHANNEL_IDX + 1]   
 
-    to_fast = abs(theta_speed) > 0.45
-
-    costs = (1.0-(theta+1.0)/2.0) / 100.0 + (abs(theta_speed) > 0.42) * (abs(theta_speed) - 0.42) / 5.0 #SL orig: tanh2(theta, C=0.01, mu=0.5)
+    costs = (1.0-(theta+1.0)/2.0) / 100.0 + (abs(theta_speed) > 0.45) * (abs(theta_speed) - 0.45) / 8.0 #SL orig: tanh2(theta, C=0.01, mu=0.5)
                               # why this: gives 1 when standing up and 0 when hanging down (bc theta..)  -- probably divided to make sure its smaller than terminal costs of failure
     #costs += tanh2(theta_speed, C=0.01, mu=2.5)
 
@@ -320,12 +318,12 @@ class ModuloWrapperSchedule(Schedule):
 
 def initial_fit(controller,
                 sart_folder="psidata-cartpole-train", 
-                td_iterations=400, 
+                td_iterations=200, 
                 epochs_per_iteration=1,
                 minibatch_size=2048,
                 callback=None,
-                verbose=False):
-    
+                verbose=False,
+                final_fit=True):
 
     # Load the collected data
     batch = Batch.from_hdf5(
@@ -333,7 +331,7 @@ def initial_fit(controller,
         state_channels=STATE_CHANNELS,
         action_channels=("direction_index",),
         lookback=lookback,
-        controller=controller,
+        control=controller,
     )
 
     print("Initial fitting with {} episodes from {} for {} iterations with {} epochs each and minibatch size of {}.".format(len(batch._episodes),   sart_folder, td_iterations, epochs_per_iteration, minibatch_size))
@@ -360,6 +358,18 @@ def initial_fit(controller,
                        gamma=gamma,
                        callbacks=callbacks,
                        verbose=verbose)
+
+            # Fit the controller
+        controller.fit(
+            batch,
+            costfunc=costfunc,
+            iterations=10, # iterations,
+            epochs= 10,
+            minibatch_size=2048, #batch_size,
+            gamma=gamma,
+            callbacks=[callback],
+            verbose=1,
+        )
     except KeyboardInterrupt:
         pass
     controller.save("model-initial-fit")    
@@ -549,7 +559,7 @@ def play(plant, controller,
 
 if __name__ == "__main__":
     load_network = False
-    initial_fit = False
+    do_initial_fit = False
     play_only = False
     controller = None
     sart_folder_base = "psidata-cartpole"
@@ -571,7 +581,7 @@ if __name__ == "__main__":
         elif opt in ("-p", "--play-only"):
             play_only = True
         elif opt in ("f", "--initial-fit"):
-            initial_fit = True
+            do_initial_fit = True
         elif opt in ("s", "--sart-folder-base"):
             sart_folder_base = arg
         elif opt in ("l", "--load-model"):
@@ -596,9 +606,10 @@ if __name__ == "__main__":
                          lookback=lookback,
                          scale=True)
             
-    if initial_fit:
+    if do_initial_fit:
         initial_fit(controller, 
-                    sart_folder=sart_folder_base + "-train")
+                    sart_folder=sart_folder_base + "-train",
+                    callback=callback)
 
     if play_only:
         play(plant, controller, 
@@ -606,19 +617,12 @@ if __name__ == "__main__":
         sys.exit()
 
     else:
-            
-        if play_after_initial_fit:
-            play(plant, controller, 
-                 sart_folder=sart_folder_base + "-play")
-            sys.exit()
-
-        else:
-            learn(plant, 
-                  controller, 
-                  sart_folder_base=sart_folder_base, 
-                  num_episodes=200,
-                  max_episode_length=max_episode_length,
-                  refit_normalizer=refit_normalization)
+        learn(plant, 
+              controller, 
+              sart_folder_base=sart_folder_base, 
+              num_episodes=200,
+              max_episode_length=max_episode_length,
+              refit_normalizer=refit_normalization)
 
 
 
