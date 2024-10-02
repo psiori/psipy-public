@@ -931,7 +931,7 @@ def plot_swingup_state_history(
     axs[1].set_ylabel("Angle")
     axs[1].legend()
 
-    axs[2].plot(x, label="pole_velocity")
+    axs[2].plot(td, label="pole_velocity")
     axs[2].set_title("pole_velocity")
     axs[2].set_ylabel("Angular Vel")
     axs[2].legend()

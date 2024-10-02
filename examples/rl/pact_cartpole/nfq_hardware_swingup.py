@@ -76,7 +76,8 @@ def costfunc(states: np.ndarray) -> np.ndarray:
     theta = states[:, THETA_CHANNEL_IDX]             # SL TODO: if using cosine, needs to change 
     theta_speed = states[:, THETA_CHANNEL_IDX + 1]   
 
-    costs = (1.0-(theta+1.0)/2.0) / 100.0 + (abs(theta_speed) > 0.45) * (abs(theta_speed) - 0.45) / 8.0 #SL orig: tanh2(theta, C=0.01, mu=0.5)
+    costs = (abs(1.0-theta) > 0.2) * 0.01 
+    #costs = (1.0-(theta+1.0)/2.0) / 100.0 + (abs(theta_speed) > 0.45) * (abs(theta_speed) - 0.45) / 8.0 #SL orig: tanh2(theta, C=0.01, mu=0.5)
                               # why this: gives 1 when standing up and 0 when hanging down (bc theta..)  -- probably divided to make sure its smaller than terminal costs of failure
     #costs += tanh2(theta_speed, C=0.01, mu=2.5)
 
@@ -89,7 +90,7 @@ def costfunc(states: np.ndarray) -> np.ndarray:
 
 
     if position.size > 1:  # SL: original version did not work if passed single states
-        costs[abs(position - center) > margin] = 0.011
+        costs[abs(position - center) > margin] = 0.01 #0.011
         costs[position + SwingupPlant.LEFT_SIDE <= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET * 2] = 0.1
         costs[position + SwingupPlant.LEFT_SIDE >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET * 2] = 0.1
         costs[position + SwingupPlant.LEFT_SIDE <= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET] = 1.0
@@ -97,7 +98,7 @@ def costfunc(states: np.ndarray) -> np.ndarray:
 
     elif position.size == 1:
         if (abs(position[0] - center) > margin):
-            costs[0] = 0.011
+            costs[0] = 0.01 #  0.011
         #print (f"true_position { position[0] + SwingupPlant.LEFT_SIDE }")
         if (position[0] + SwingupPlant.LEFT_SIDE<= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET or position[0] >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET):
             costs[0] = 1.0
@@ -318,12 +319,12 @@ class ModuloWrapperSchedule(Schedule):
 
 def initial_fit(controller,
                 sart_folder="psidata-cartpole-train", 
-                td_iterations=100, 
-                epochs_per_iteration=8,
+                td_iterations=200, 
+                epochs_per_iteration=2,
                 minibatch_size=2048,
                 callback=None,
                 verbose=True,
-                final_fit=False):
+                final_fit=True):
 
     # Load the collected data
     batch = Batch.from_hdf5(
@@ -369,7 +370,7 @@ def initial_fit(controller,
                 costfunc=costfunc,
                 iterations=25, # iterations,
                 epochs= 8,
-                minibatch_size=2048, #batch_size,
+                minibatch_size=minibatch_size, #batch_size,
                 gamma=gamma,
                 callbacks=[callback],
                 verbose=verbose,
@@ -403,7 +404,7 @@ def learn(plant,
                                       end=0.05,
                                       num_episodes=num_episodes / 4)
   
-    eval_reps = 4                                    
+    eval_reps = 1                                    
     
     try:
         batch = Batch.from_hdf5(
@@ -496,7 +497,7 @@ def learn(plant,
 
             avg_step_cost = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
 
-            if episode > min_eps_before_eval and avg_step_cost < min_avg_step_cost * 1.1:
+            if episode > min_eps_before_eval and avg_step_cost < min_avg_step_cost * 1.1 and eval_reps > 1:
                 print("Running {} ADDITIONAL EVALUATION repetitions because model is promising candidate for replacing the best model found so far...".format(eval_reps-1))
 
                 controller.epsilon = 0.0
@@ -595,10 +596,6 @@ if __name__ == "__main__":
             controller = NFQ.load(arg, custom_objects=[ActionType])
         elif opt in ("r", "--refit-normalization"):
             refit_normalization = not(not(arg))
-
-    plant = SwingupPlant(hilscher_port="5555",
-                         sway_start=False,
-                         cost_function=costfunc)#, 
     
     if controller is None:  # not loaded from file
         model = make_model(len(STATE_CHANNELS), len(ActionType.legal_values[0]), lookback,)
@@ -617,6 +614,12 @@ if __name__ == "__main__":
                     sart_folder=sart_folder_base + "-train",
                     callback=callback)
 
+    # create plant after initial fit, because it looses connection during the long wait
+    # otherwise
+    plant = SwingupPlant(hilscher_port="5555",
+                         sway_start=False,
+                         cost_function=costfunc) 
+
     if play_only:
         play(plant, controller, 
              sart_folder=sart_folder_base + "-play")
@@ -626,7 +629,7 @@ if __name__ == "__main__":
         learn(plant, 
               controller, 
               sart_folder_base=sart_folder_base, 
-              num_episodes=200,
+              num_episodes=800,
               max_episode_length=max_episode_length,
               refit_normalizer=refit_normalization)
 
@@ -672,3 +675,4 @@ Improve:
 - discuss repos, enforce merging, deviation of public repo & actions / control / plant issues with Alex, collect opinion before changing
 - handle overflow correctly (see SL comments in RL plant)
 """
+

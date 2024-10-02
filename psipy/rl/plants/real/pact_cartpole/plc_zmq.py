@@ -77,6 +77,7 @@ class HardwareComms:
         self.port = port
         self.zmq = zmq.Context()
         self.active = False
+        self.socket = None
 
     def send_NOOP(self):
         """Convenience function for sending the NOOP"""
@@ -137,7 +138,8 @@ class HardwareComms:
         LOG.info("Closed hardware comms zmq socket.")
 
     def __del__(self):
-        self.socket.close()
+        if self.socket is not None:
+            self.socket.close()
         self.zmq.destroy()
 
 
