@@ -132,7 +132,8 @@ class DQBatch(Sequence):
             q_target = np.clip((q_target - q_target.min()) + 0.005, 0.005, 0.995)
             # qs[costs.ravel() == 0] = 0.05  #SL in all versions I've seen, this was commented out
 
-        # print(">>> qtargets after scaling and setting terminals and clipping", q_target)
+        print(">>> qtargets after scaling and setting terminals and clipping", q_target)
+        print(">>> qtargets close to 1: ", (q_target > 0.95).sum())
 
         # Store the q target in the batch; it is altered below if
         # using a prioritized double NFQ in order to reduce dims

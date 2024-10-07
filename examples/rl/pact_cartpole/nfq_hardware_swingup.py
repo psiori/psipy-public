@@ -20,6 +20,7 @@ from getopt import getopt
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras.layers as tfkl
+from tensorflow import keras
 
 from pprint import pprint
 
@@ -62,8 +63,8 @@ def make_model(n_inputs, n_outputs, lookback):
     net = tfkl.Flatten()(inp)
     net = tfkl.Dense(256, activation="relu")(net)
     net = tfkl.Dense(256, activation="relu")(net)
-    net = tfkl.Dense(100, activation="tanh")(net)
-    net = tfkl.Dense(n_outputs, activation="sigmoid")(net)  # sigmoid
+    net = tfkl.Dense(200, activation="relu")(net)
+    net = tfkl.Dense(n_outputs, activation="linear")(net)  # sigmoid
     return tf.keras.Model(inp, net)
 
 
@@ -606,8 +607,9 @@ if __name__ == "__main__":
                          action_channels=("direction",),
                          action=ActionType,
                          action_values=ActionType.legal_values[0],
+                         optimizer=keras.optimizers.Adam(),
                          lookback=lookback,
-                         scale=True)
+                         scale=False)
             
     if do_initial_fit:
         initial_fit(controller, 
