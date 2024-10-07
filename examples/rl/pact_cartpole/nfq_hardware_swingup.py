@@ -325,7 +325,8 @@ def initial_fit(controller,
                 minibatch_size=2048,
                 callback=None,
                 verbose=True,
-                final_fit=True):
+                final_fit=True,
+                replay_episodes=False):
 
     # Load the collected data
     batch = Batch.from_hdf5(
@@ -349,19 +350,42 @@ def initial_fit(controller,
 
     callbacks = [callback] if callback is not None else None
 
-    # Fit the controller
-    print("Initial fitting of controller...")
-    try:
-        controller.fit(batch,
-                       costfunc=costfunc,
-                       iterations=td_iterations,
-                       epochs=epochs_per_iteration,
-                       minibatch_size=minibatch_size,
-                       gamma=gamma,
-                       callbacks=callbacks,
-                       verbose=verbose)
-    except KeyboardInterrupt:
-        pass
+
+    if replay_episodes:
+
+        for i in range(len(1, batch._episodes)):  
+            print("Replaying episode:", i)
+            replay_batch = Batch(episodes=[batch._episodes[0:i]],         
+                                 control=controller)
+            
+            try:
+                controller.fit(
+                    replay_batch,
+                    costfunc=costfunc,
+                    iterations=4, # TODO: parameters
+                    epochs= 8, # TODO: parameters
+                    minibatch_size=minibatch_size,
+                    gamma=gamma,
+                    callbacks=[callback],
+                    verbose=verbose,
+                )
+            except KeyboardInterrupt:
+                pass
+
+    else:
+        # Fit the controller
+        print("Initial fitting of controller...")
+        try:
+            controller.fit(batch,
+                           costfunc=costfunc,
+                           iterations=td_iterations,
+                           epochs=epochs_per_iteration,
+                           minibatch_size=minibatch_size,
+                           gamma=gamma,
+                           callbacks=callbacks,
+                           verbose=verbose)
+        except KeyboardInterrupt:
+            pass
 
     try:
         if final_fit:
