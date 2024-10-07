@@ -63,8 +63,8 @@ def make_model(n_inputs, n_outputs, lookback):
     net = tfkl.Flatten()(inp)
     net = tfkl.Dense(256, activation="relu")(net)
     net = tfkl.Dense(256, activation="relu")(net)
-    net = tfkl.Dense(200, activation="relu")(net)
-    net = tfkl.Dense(n_outputs, activation="linear")(net)  # sigmoid
+    net = tfkl.Dense(100, activation="tanh")(net)  # tanh, 100
+    net = tfkl.Dense(n_outputs, activation="sigmoid")(net)  # sigmoid
     return tf.keras.Model(inp, net)
 
 
@@ -325,8 +325,8 @@ def initial_fit(controller,
                 minibatch_size=2048,
                 callback=None,
                 verbose=True,
-                final_fit=True,
-                replay_episodes=False):
+                final_fit=False,
+                replay_episodes=True):
 
     # Load the collected data
     batch = Batch.from_hdf5(
@@ -345,34 +345,47 @@ def initial_fit(controller,
     # Fit the normalizer
     print("Initial fitting with data from {} for {} iterations with {} epochs each and minibatch size of {}.".format(sart_folder, td_iterations, epochs_per_iteration, minibatch_size))
 
-    print("Fitting normalizer...")
-    controller.fit_normalizer(batch.observations, method="meanstd")
+
 
     callbacks = [callback] if callback is not None else None
 
 
     if replay_episodes:
+        print(">>>> Replaying {} episodes".format(len(batch._episodes)))
+       
+        try:
+            for i in range(1, len(batch._episodes)):  
+                print("Replaying episode:", i)
 
-        for i in range(len(1, batch._episodes)):  
-            print("Replaying episode:", i)
-            replay_batch = Batch(episodes=[batch._episodes[0:i]],         
-                                 control=controller)
+                replay_batch = Batch(episodes=batch._episodes[0:i],         
+                                     control=controller)
+                                     
+                #pprint (replay_batch._episodes[0].observations)
+                #sys.exit()
+
+                if i == 1 or (i % 10 == 0 and i < len(batch._episodes) / 2):
+                    print("Fitting normalizer...")
+                    controller.fit_normalizer(replay_batch.observations, method="meanstd")
             
-            try:
+
                 controller.fit(
-                    replay_batch,
-                    costfunc=costfunc,
-                    iterations=4, # TODO: parameters
-                    epochs= 8, # TODO: parameters
-                    minibatch_size=minibatch_size,
-                    gamma=gamma,
-                    callbacks=[callback],
-                    verbose=verbose,
+                        replay_batch,
+                        costfunc=costfunc,
+                        iterations=2, # TODO: parameters
+                        epochs= 2, # TODO: parameters
+                        minibatch_size=minibatch_size,
+                        gamma=gamma,
+                        callbacks=[callback],
+                        verbose=verbose,
                 )
-            except KeyboardInterrupt:
-                pass
+        except KeyboardInterrupt:
+            pass
 
     else:
+    
+        print("Fitting normalizer...")
+        controller.fit_normalizer(batch.observations, method="meanstd")
+    
         # Fit the controller
         print("Initial fitting of controller...")
         try:
@@ -633,7 +646,7 @@ if __name__ == "__main__":
                          action_values=ActionType.legal_values[0],
                          optimizer=keras.optimizers.Adam(),
                          lookback=lookback,
-                         scale=False)
+                         scale=True)
             
     if do_initial_fit:
         initial_fit(controller, 

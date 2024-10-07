@@ -798,12 +798,15 @@ class Batch(KSequence):
         dirpaths: Tuple[str, ...],
         only_newest: Optional[int] = None,
         override_mtime: bool = False,  # TODO Test
+        sort_by_name: bool = True
     ) -> List[str]:
         """Generate a list of hdf5 files, excluding old ones if desired."""
 
         def _sort_by_time(filename):
             date_time = filename.split("-")[-4:-2]
-            return datetime.strptime("-".join(date_time), "%y%m%d-%H%M%S")
+            datetime = datetime.strptime("-".join(date_time), "%y%m%d-%H%M%S")
+            exit()
+            return datetime
 
         files = []
         for dirpath in dirpaths:
@@ -814,12 +817,15 @@ class Batch(KSequence):
             )
         # Remove old files if desired
         files = sorted(files, key=lambda f: os.path.getmtime(f))
+        if sort_by_name:
+            files = sorted(files)
         if override_mtime:
             files = sorted(files, key=_sort_by_time)
         if only_newest is not None:
             sort = files  # Cache files back into sort so that we can ignore paths
             files = sort[-only_newest:]
             cls._ignored_sart_paths = set(sort[:only_newest])
+
         return files
 
     @classmethod
