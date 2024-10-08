@@ -403,7 +403,7 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         cost = ""
         q = ""
         if self._cost_function and self._current_state:
-            cost = self._cost_function(self._current_state.as_array()[None, ...])[0]
+            cost = self._cost_function(self._current_state)
         if self._controller:
             try:
                 stack = self._controller._memory.stack[None, ...]

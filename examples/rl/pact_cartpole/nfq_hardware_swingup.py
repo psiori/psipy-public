@@ -191,8 +191,8 @@ def initial_fit(controller,
                 minibatch_size=2048,
                 callback=None,
                 verbose=True,
-                final_fit=False,
-                replay_episodes=True):
+                final_fit=True,
+                replay_episodes=False):
 
     # Load the collected data
     batch = Batch.from_hdf5(
