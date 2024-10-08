@@ -712,9 +712,7 @@ class Plant(Generic[TState, TAction], metaclass=ABCMeta):
         # Check if a cost function first exists (init may not have been called) and
         # if so, if it is not None in order to apply the cost function
         if hasattr(self, "_cost_function") and self._cost_function is not None:
-            self._current_state.cost = self._cost_function(
-                np.asarray([self._current_state.as_array()])
-            )[0]
+            self._current_state.cost = self._cost_function(self._current_state)
         self._episode_steps += 1
         return self._current_state
 

@@ -259,9 +259,9 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         cos = math.cos(theta)
 
         state = [self.x_start, x_dot, theta, sin, cos, theta_dot, 0.0]
-        cost = self._cost_function(state)
+        self._current_state = CartPoleState(state, 0.0, False)# zero action
+        self._current_state.cost = self._cost_function(self._current_state)
 
-        self._current_state = CartPoleState(state, cost, False)# zero action
         return self._current_state
     
     def render(self):
