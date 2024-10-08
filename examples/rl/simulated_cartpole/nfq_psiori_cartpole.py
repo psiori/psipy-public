@@ -18,11 +18,13 @@ from psipy.rl.plants.simulated.cartpole import (
     CartPoleBangAction,
     CartPole,
     CartPoleState,
+    plot_swingup_state_history
 )
-#from psipy.rl.visualization.plotting_callback import PlottingCallback
+from psipy.rl.visualization.plotting_callback import PlottingCallback
+from psipy.rl.visualization.metrics import RLMetricsPlot
 
 # Define where we want to save our SART files
-sart_folder = "psidata-sart-cartpole-swingup"
+sart_folder = "psidata-cartpole-swingup"
 
 
 # Create a model based on state, action shapes and lookback
@@ -51,11 +53,10 @@ def make_cosine_cost_func(x_boundary: float=2.4) -> Callable[[np.ndarray], np.nd
 
             if abs(position) >= x_boundary:
                 cost = 1.0
-            elif abs(position) >= x_boundary*0.9:
+            elif abs(position) >= x_boundary*0.9: # close to x_boundary
                 cost = 0.1
-            else:
+            else: 
                 cost = (1.0-(cosine+1.0)/2.0) / 100.0
-            #print(cost)
             return cost
         
         position = states[:, CART_POSITION_CHANNEL_IDX]
@@ -70,7 +71,10 @@ def make_cosine_cost_func(x_boundary: float=2.4) -> Callable[[np.ndarray], np.nd
         return costs
     return cosine_costfunc
 
-def make_sparse_cost_func(x_boundary: float=2.4) -> Callable[[np.ndarray], np.ndarray]:
+def make_sparse_cost_func(x_boundary: float=2.4,
+                          step_cost: float=0.01,
+                          use_cosine: bool=True,
+                          upright_margin: float=0.2) -> Callable[[np.ndarray], np.ndarray]:
     def sparse_costfunc(states: np.ndarray) -> np.ndarray:
         # unfortunately, we need to provide a vectorized version (for the batch
         # processing in the controller) as well as a single state verison (for the
@@ -78,27 +82,35 @@ def make_sparse_cost_func(x_boundary: float=2.4) -> Callable[[np.ndarray], np.nd
 
         if np.ndim(states) == 1:  # this is the version for a single state
             #print("WARNING: states is a 1D list. This should not happen.")
+
             position = states[CART_POSITION_CHANNEL_IDX]
             cosine = states[COSINE_CHANNEL_IDX]
 
             if abs(position) >= x_boundary:
-                cost = 1.0
+                cost = 1.0  # failing terminal state
             elif abs(position) >= x_boundary*0.9:
-                cost = 0.1
+                cost = step_cost * 10
             elif abs(position) <= x_boundary*0.2:
-                cost = (1.0-(cosine+1.0)/2.0) / 100.0
+                if use_cosine:
+                    cost = (1.0-(cosine+1.0)/2.0) * step_cost
+                else:
+                    cost = (abs(1.0-cosine) > upright_margin) * step_cost
             else:
-                cost = 0.01
+                cost = step_cost
             #print(cost)
             return cost
         
         position = states[:, CART_POSITION_CHANNEL_IDX]
         cosine = states[:, COSINE_CHANNEL_IDX]
 
-        costs = (1.0-(cosine+1.0)/2.0) / 100.0  # can only get lower costs in center of x axis
-        costs[abs(position) >= x_boundary*0.2] = 0.01  # standard step costs 
-        costs[abs(position) >= x_boundary*0.9] = 0.1   # 10x step costs close to x_boundary
-        costs[abs(position) >= x_boundary] = 1.0       # 100x step costs in terminal states
+        if use_cosine:
+            costs = (1.0-(cosine+1.0)/2.0) * step_cost  # can only get lower costs in center of x axis
+        else:
+            costs = (abs(1.0-cosine) > upright_margin) * step_cost
+
+        costs[abs(position) >= x_boundary*0.2] = step_cost       # standard step costs 
+        costs[abs(position) >= x_boundary*0.9] = step_cost * 10  # 10x step costs close to x_boundary
+        costs[abs(position) >= x_boundary] = 1.0                 # 100x step costs in terminal states
 
         # ATTENTION, a word regarding the choice of terminal costs and "step costs":
         # the relation of terminal costs to step costs depends on the gamma value.
@@ -112,9 +124,7 @@ def make_sparse_cost_func(x_boundary: float=2.4) -> Callable[[np.ndarray], np.nd
         # or your treatment of the terminal transition is not correct (e.g. not doing a TD update
         # on these transitions at all, wrong scaling, etc.). We have seen both types of errors
         # (terminal costs to low, wrong handling of terminal transitions) in our own code as
-        # well as our students code, but also in "prominent" projects and papers.
-
-        #print(costs)
+        # well as our students code, but also in "prominent" projects and papers. So, make sure to check this twice
 
         return costs
     return sparse_costfunc
@@ -132,138 +142,7 @@ ActionType = CartPoleBangAction
 StateType = CartPoleState
 
 
-
-def plot_swingup_state_history(
-    episode: Optional[Episode],
-    plant: Optional[CartPole] = None,
-    filename: Optional[str] = None,
-    episode_num: Optional[int] = None,
-) -> None:
-    """Creates a plot that details the controller behavior.
-
-    The plot contains 3 subplots:
-
-    1. Cart position
-    2. Pole angle, with green background denoting the motor being active
-    3. Action from the controller.  Actions that fall within the red
-        band are too small to change velocity, and so the cart does not
-        move in this zone.
-
-    Args:
-        plant: The plant currently being evaluated, will plot after
-                the episode is finished.
-        sart_path: If given, will load a sart file instead of requiring
-                the plant to run
-
-    """
-    cost = None
-    #plant = cast(CartPole, plant)
-
-    x = episode.observations[:, 0]
-    x_s = episode.observations[:, 1]
-    t = episode.observations[:, 2]
-    pole_sine = episode.observations[:, 3]
-    pole_cosine = episode.observations[:, 4]
-    td = episode.observations[:, 5]
-    a = episode._actions[:, 0]
-    cost = episode.costs
-        
-    figure = plt.figure(0,  figsize=(10, 8))
-    figure.clear()
-
-    axes = figure.subplots(5)
-
-    axes[0].plot(x, label="cart_position")
-    axes[0].set_title("cart_position")
-    axes[0].set_ylabel("Position")
-    axes[0].legend()
-
-    axes[1].plot(pole_cosine, label="cos")
-    axes[1].plot(pole_sine, label="sin")
-    axes[1].axhline(0, color="grey", linestyle=":", label="target")
-    axes[1].set_title("Angle")
-#   axes[1].set_ylim((-1.0, 1,0))
-    #axes[1].set_ylabel("Angle")
-    axes[1].legend()
-
-    axes[2].plot(td, label="pole_velocity")
-    axes[2].set_title("pole_velocity")
-    axes[2].set_ylabel("Angular Vel")
-    axes[2].legend()
-
-    axes[3].plot(a, label="Action")
-    axes[3].axhline(0, color="grey", linestyle=":")
-    axes[3].set_title("Control")
-    axes[3].set_ylabel("Velocity")
-    axes[3].legend(loc="upper left")
- #   axes2b = axs[3].twinx()
- #   axes2b.plot(x_s, color="black", alpha=0.4, label="True Velocity")
- #   axes2b.set_ylabel("Steps/s")
- #   axes2b.legend(loc="upper right")
-
-    if cost is not None:
-        axes[4].plot(cost, label="cost")
-        axes[4].set_title("cost")
-        axes[4].set_ylabel("cost")
-        axes[4].legend()
-
-    if episode_num is None:
-        figure.suptitle("NFQ Controller on Physical Swingup Model")
-    else:
-        figure.suptitle(f"NFQ Controller on Physical Swingup Model, Episode {episode_num}")
-    
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    if filename:
-        figure.savefig(filename)
-        plt.close(figure)
-    else:
-        figure.show()
-
 import numpy as np
-
-def plot_metrics(metrics, fig=None, filename=None):
-    if fig is not None:
-        fig.clear()
-    else:
-        fig = plt.figure(1,  figsize=(10, 8))
-
-    axs = fig.subplots(1)
-
-    window_size = 7
-
-    if window_size > len(metrics["avg_cost"]):
-        return
-    
-    #print(">>> metrics['avg_cost']", metrics["avg_cost"])
-    
-    # Calculate moving average and variance
-    avg_cost = np.array(metrics["avg_cost"])
-    moving_avg = np.convolve(avg_cost, np.ones(window_size)/window_size, mode='same')
-    
-    # Calculate moving variance
-    moving_var = np.convolve(avg_cost**2, np.ones(window_size)/window_size, mode='same') - moving_avg**2
-    moving_std = np.sqrt(moving_var)
-    
-    # Plot original data, moving average, and variance
-    x = range(len(avg_cost))
-    x_valid = x # range(window_size-1, len(avg_cost))
-    
-    axs.plot(x_valid, avg_cost, label="avg_cost", alpha=0.3, color='gray')
-    axs.plot(x_valid, moving_avg, label="moving average", color='blue')
-    axs.fill_between(x_valid, moving_avg - moving_std, moving_avg + moving_std, alpha=0.2, color='blue', label='±1 std dev')
-    
-    axs.set_title("Average Cost")
-    axs.set_ylabel("Cost per step")
-    axs.legend()
-
-    fig.canvas.draw()
-
-    if filename is not None:
-        fig.savefig(filename)
-
-    return fig
-    
-
 
 state_channels = [
     "cart_position",
@@ -317,6 +196,14 @@ fig = None
 do_eval = True
 
 
+callback = PlottingCallback(
+    ax1="q", is_ax1=lambda x: x.endswith("q"), ax2="ME", is_ax2=lambda x: x.endswith("qdelta")
+)
+
+metrics_plot = RLMetricsPlot(filename="metrics-latest.png")
+episode_plot = None
+
+
 for i in range(200):
     loop.run(1, max_episode_steps=500)
 
@@ -330,9 +217,12 @@ for i in range(200):
         control=nfq,
     )
 
-    plot_swingup_state_history(batch._episodes[len(batch._episodes)-1],
-                               filename=f"swingup_latest_episode-{len(batch._episodes)}.png",
-                               episode_num=len(batch._episodes))
+    episode_plot = plot_swingup_state_history(
+        figure=episode_plot,
+        episode=batch._episodes[len(batch._episodes)-1],
+        filename=f"swingup_latest_episode-{len(batch._episodes)}.png",
+        episode_num=len(batch._episodes)
+    )
     
     print(">>> num episodes in batch: ", len(batch._episodes))
     
@@ -342,20 +232,18 @@ for i in range(200):
 
 
     # Fit the controller
-#callback = PlottingCallback(
-#    ax1="q", is_ax1=lambda x: x.endswith("q"), ax2="mse", is_ax2=lambda x: x == "loss"
-#)
+
+
     try:
         nfq.fit(
             batch,
             costfunc=used_cost_func,
-            iterations=5,
-            epochs=10,
-            minibatch_size=256,
+            iterations=4,
+            epochs=8,
+            minibatch_size=2048,
             gamma=0.98,
             verbose=1,
- 
-#        callbacks=[callback],
+            callbacks=[callback],
         )
         nfq.save(f"model-latest")  # this is always saved to allow to continue training after interrupting (and potentially changing) the script
     except KeyboardInterrupt:
@@ -374,9 +262,9 @@ for i in range(200):
         metrics["wall_time_s"].append(episode_metrics["wall_time_s"])
         metrics["avg_cost"].append(episode_metrics["total_cost"] / episode_metrics["cycles_run"])
 
-        fig = plot_metrics(metrics, fig=fig, filename=f"metrics-latest.png")
-        if fig is not None:
-            fig.show()
+        metrics_plot.update(metrics)
+        metrics_plot.plot()
+        metrics_plot.save()
 
         avg_step_cost = episode_metrics["total_cost"] / episode_metrics["cycles_run"]
 

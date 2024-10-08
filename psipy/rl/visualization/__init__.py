@@ -14,5 +14,6 @@ training of NFQ/NFQCA and other Keras-based control algorithms.
 
 from psipy.rl.visualization.plotting_callback import PlottingCallback
 from psipy.rl.visualization.sart_visualizer import plot_observations
+from psipy.rl.visualization.metrics import RLMetricsPlot
 
-__all__ = ["PlottingCallback", "plot_observations"]
+__all__ = ["PlottingCallback", "plot_observations", "RLMetricsPlot"]

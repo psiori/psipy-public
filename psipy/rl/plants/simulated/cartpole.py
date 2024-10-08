@@ -1,9 +1,11 @@
 import math
 import random
-from typing import Callable, Optional, Tuple, Type, Union
+from typing import Callable, Optional, Tuple, Type
+from matplotlib import pyplot as plt
 import numpy as np
 from psipy.rl.core.plant import Action, Plant, State
 from psipy.rl.controllers.nfq import tanh2
+from psipy.rl.io.batch import Episode
 
 # This plant contains modified code from the gymnasium cartpole example.
 # To satisfy their licence conditions, we include the following statement
@@ -358,3 +360,97 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
             return np.transpose(
                 np.array(pygame.surfarray.pixels3d(self.screen)), axes=(1, 0, 2))
 
+
+
+def plot_swingup_state_history(
+    episode: Optional[Episode],
+    filename: Optional[str] = None,
+    episode_num: Optional[int] = None,
+    figure: Optional[plt.Figure] = None,
+) -> None:
+    """Creates a plot that details the controller behavior.
+
+    The plot contains 3 subplots:
+
+    1. Cart position
+    2. Pole angle, with green background denoting the motor being active
+    3. Action from the controller.  Actions that fall within the red
+        band are too small to change velocity, and so the cart does not
+        move in this zone.
+
+    Args:
+        plant: The plant currently being evaluated, will plot after
+                the episode is finished.
+        sart_path: If given, will load a sart file instead of requiring
+                the plant to run
+
+    """
+    cost = None
+    #plant = cast(CartPole, plant)
+
+    x = episode.observations[:, 0]
+    x_s = episode.observations[:, 1]
+    t = episode.observations[:, 2]
+    pole_sine = episode.observations[:, 3]
+    pole_cosine = episode.observations[:, 4]
+    td = episode.observations[:, 5]
+    a = episode._actions[:, 0]
+    cost = episode.costs
+    
+
+    if figure is None:  
+        figure, axes = plt.subplots(5, figsize=(10, 8))
+    else:
+        plt.figure(figure.number)
+        axes = figure.axes
+
+    for ax in axes:
+        ax.clear()
+
+    axes[0].plot(x, label="cart_position")
+    axes[0].set_title("cart_position")
+    axes[0].set_ylabel("Position")
+    axes[0].legend()
+
+    axes[1].plot(pole_cosine, label="cos")
+    axes[1].plot(pole_sine, label="sin")
+    axes[1].axhline(0, color="grey", linestyle=":", label="target")
+    axes[1].set_title("Angle")
+#   axes[1].set_ylim((-1.0, 1,0))
+    #axes[1].set_ylabel("Angle")
+    axes[1].legend()
+
+    axes[2].plot(td, label="pole_velocity")
+    axes[2].set_title("pole_velocity")
+    axes[2].set_ylabel("Angular Vel")
+    axes[2].legend()
+
+    axes[3].plot(a, label="Action")
+    axes[3].axhline(0, color="grey", linestyle=":")
+    axes[3].set_title("Control")
+    axes[3].set_ylabel("Velocity")
+    axes[3].legend(loc="upper left")
+ #   axes2b = axs[3].twinx()
+ #   axes2b.plot(x_s, color="black", alpha=0.4, label="True Velocity")
+ #   axes2b.set_ylabel("Steps/s")
+ #   axes2b.legend(loc="upper right")
+
+    if cost is not None:
+        axes[4].plot(cost, label="cost")
+        axes[4].set_title("cost")
+        axes[4].set_ylabel("cost")
+        axes[4].legend()
+
+    if episode_num is None:
+        figure.suptitle("Simulated Cartpole")
+    else:
+        figure.suptitle(f"Simulated Cartpole, Episode {episode_num}")
+    
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    if filename:
+        figure.savefig(filename)
+        # plt.close(figure)
+    else:
+        plt.pause(0.01)
+
+    return figure
