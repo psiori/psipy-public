@@ -92,22 +92,12 @@ def costfunc(states: np.ndarray) -> np.ndarray:
     # PROBLEM: for terminals, we need to check raw, unmoved position (no moved zero), but we can't compute here and lack information about the zero shift. Thus, use the lEFT_SIDE, because we know, in default param setup thats the zero. Also problem: if we move zero, MDP is not markov, because we cant derive positions of bounds from state :(
 
 
-    if position.size > 1:  # SL: original version did not work if passed single states
-        costs[abs(position - center) > margin] = 0.01 #0.011
-        costs[position + SwingupPlant.LEFT_SIDE <= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET * 2] = 0.1
-        costs[position + SwingupPlant.LEFT_SIDE >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET * 2] = 0.1
-        costs[position + SwingupPlant.LEFT_SIDE <= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET] = 1.0
-        costs[position + SwingupPlant.LEFT_SIDE >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET] = 1.0
 
-    elif position.size == 1:
-        if (abs(position[0] - center) > margin):
-            costs[0] = 0.01 #  0.011
-        #print (f"true_position { position[0] + SwingupPlant.LEFT_SIDE }")
-        if (position[0] + SwingupPlant.LEFT_SIDE<= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET or position[0] >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET):
-            costs[0] = 1.0
-        elif (position[0] + SwingupPlant.LEFT_SIDE<= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET * 2 or position[0] >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET * 2):
-            costs[0] = 0.1
-    #print(costs)
+    costs[abs(position - center) > margin] = 0.01 # 0.011
+    costs[position + SwingupPlant.LEFT_SIDE <= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET * 2] = 0.1
+    costs[position + SwingupPlant.LEFT_SIDE >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET * 2] = 0.1
+    costs[position + SwingupPlant.LEFT_SIDE <= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET] = 1.0
+    costs[position + SwingupPlant.LEFT_SIDE >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET] = 1.0
 
     return costs
 
@@ -533,7 +523,9 @@ if __name__ == "__main__":
     # otherwise
     plant = SwingupPlant(hilscher_port="5555",
                          sway_start=False,
-                         cost_function=costfunc) 
+                         cost_function=SwingupPlant.cost_func_wrapper(
+                             costfunc,
+                             STATE_CHANNELS)) 
 
     if play_only:
         play(plant, controller, 
