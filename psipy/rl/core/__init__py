@@ -7,5 +7,6 @@ including the Plant, Action, and State base classes.
 
 from psipy.rl.core.plant import Action, Plant, State, TAction, TerminalStates, TState
 from psipy.rl.core.controller import Controller
+from psipy.rl.core.experimentation import Experiment, Environment
 
-__all__ = ["Action", "Plant", "State", "TAction", "TerminalStates", "TState", "Controller"]
+__all__ = ["Action", "Plant", "State", "TAction", "TerminalStates", "TState", "Controller", "Experiment", "Environment"]

@@ -222,7 +222,8 @@ for i in range(200):
         control=nfq,
     )
 
-    last_episode_internal = Batch.from_hdf5(  # load the last episode with full plant-internal state representation
+    last_episode_internal = Batch.from_hdf5(
+        # load the last episode with full plant-internal state representation
         sart_folder,
         action_channels=["move_index",],
         lookback=lookback,
@@ -230,10 +231,10 @@ for i in range(200):
     )
 
     episode_plot = plot_swingup_state_history(
-        figure=episode_plot,
         episode=last_episode_internal._episodes[0],
         filename=f"swingup_latest_episode-{len(batch._episodes)}.png",
-        episode_num=len(batch._episodes)
+        episode_num=len(batch._episodes),
+        figure=episode_plot,
     )
     
     print(">>> num episodes in batch: ", len(batch._episodes))
