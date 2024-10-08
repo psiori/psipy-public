@@ -38,8 +38,17 @@ def make_model(n_inputs, n_outputs, lookback):
     return tf.keras.Model(inp, net)
 
 
-CART_POSITION_CHANNEL_IDX = 0
-COSINE_CHANNEL_IDX = 4
+state_channels = [
+    "cart_position",
+    "cart_velocity",
+    "pole_sine",
+    "pole_cosine",
+    "pole_velocity",
+#   "move_ACT",  # add, if lookback > 1
+]
+
+CART_POSITION_CHANNEL_IDX = state_channels.index("cart_position")
+COSINE_CHANNEL_IDX = state_channels.index("pole_cosine")
 
 x_threshold=3.6
 
@@ -137,30 +146,25 @@ used_cost_func = sparse_cost_func
 
 print(">>> ATTENTION: chosen cost function: ", used_cost_func)
 
-plant = CartPole(x_threshold=x_threshold, cost_function=used_cost_func)  # note: this is instantiated!
+
+lookback = 1
+
+plant = CartPole(x_threshold=x_threshold, cost_function=CartPole.cost_func_wrapper(used_cost_func, state_channels))  # note: this is instantiated!
 ActionType = CartPoleBangAction
 StateType = CartPoleState
 
 
 import numpy as np
 
-state_channels = [
-    "cart_position",
-    "cart_velocity",
-    "pole_sine",
-    "pole_cosine",
-    "pole_velocity",
-#   "move_ACT",  # add, if lookback > 1
-]
-lookback = 1
+
 
 
 # Make the NFQ model
-model = make_model(len(StateType.channels()), len(ActionType.legal_values[0]), lookback)
+model = make_model(len(state_channels), len(ActionType.legal_values[0]), lookback)
 nfq = NFQ(
     model=model,
     action_channels=("move",),
-    state_channels=StateType.channels(),
+    state_channels=state_channels,
     action=ActionType,
     action_values=ActionType.legal_values[0],
     lookback=lookback,
@@ -213,13 +217,21 @@ for i in range(200):
     batch = Batch.from_hdf5(
         sart_folder,
         action_channels=["move_index",],
+        state_channels=state_channels,
         lookback=lookback,
         control=nfq,
     )
 
+    last_episode_internal = Batch.from_hdf5(  # load the last episode with full plant-internal state representation
+        sart_folder,
+        action_channels=["move_index",],
+        lookback=lookback,
+        only_newest=1,
+    )
+
     episode_plot = plot_swingup_state_history(
         figure=episode_plot,
-        episode=batch._episodes[len(batch._episodes)-1],
+        episode=last_episode_internal._episodes[0],
         filename=f"swingup_latest_episode-{len(batch._episodes)}.png",
         episode_num=len(batch._episodes)
     )
