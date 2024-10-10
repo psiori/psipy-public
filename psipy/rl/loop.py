@@ -208,6 +208,7 @@ class Loop:
 
                 # User initiated episode stop / loop exit or max_steps reached.
                 if CM.should_stop(max_steps=max_steps):
+                    # BUG? the last observation has not been added to the SART, yet! Thus, the last transition will never be used for learning??
                     break
 
                 CM["loop"].tock()

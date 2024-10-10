@@ -91,6 +91,8 @@ class DQBatch(Sequence):
         nextstates = self.batch.nextstates.all()
         qs = model(nextstates).numpy()
 
+        states, actions = self.batch.states_actions[0]
+
         if scale:
             # Invert the scaling of the network's Q values in order to calculate
             # the proper TD update.
@@ -111,8 +113,14 @@ class DQBatch(Sequence):
         #print(">>> immediate cost", costs)
         #print(">>> terminal", terminals)
         #print(">>> q_target before scaling: ", q_target)
-        print(f"qtargets n: { len(q_target) } max: {q_target.max()} min: {q_target.min()}")
+        print(f"\n\n\n>>>>>>>>>>\n\nqtargets n: { len(q_target) } max: {q_target.max()} min: {q_target.min()}")
 
+        for s, a, t, c, qt, sn, v in zip(states, actions, terminals,
+                                         costs, q_target, nextstates, qs):
+            if t:
+                print (">> TERMINAL transition ({}, {}, {}, {}) with qtarget: {} and V(sn)={}".format(s, a, c, sn, qt, v))
+
+        print ("\n>>>>>>>>>>>> {} TERMINALS\n\n".format(np.sum(terminals)))
 
         if scale:
             # Update the scaling parameters based on the max and min output of the network, and
@@ -132,7 +140,7 @@ class DQBatch(Sequence):
             q_target = np.clip((q_target - q_target.min()) + 0.005, 0.005, 0.995)
             # qs[costs.ravel() == 0] = 0.05  #SL in all versions I've seen, this was commented out
 
-        print(">>> qtargets after scaling and setting terminals and clipping", q_target)
+        #print(">>> qtargets after scaling and setting terminals and clipping", q_target)
         print(">>> qtargets close to 1: ", (q_target > 0.95).sum())
 
         # Store the q target in the batch; it is altered below if

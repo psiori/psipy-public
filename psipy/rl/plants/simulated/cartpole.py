@@ -238,6 +238,8 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         if abs(x) > self.x_threshold:
             terminal = True
 
+            print("\n\n\n<<<<<<<<<\n IN get_next_state: TERMINAL with x={} and x_threshold={}\n\n\n<<<<<<<<<<\n".format(x, self.x_threshold))
+
         info["force"] = force
         info["theta_accel"] = thetaacc
         info["x_accel"] = xacc

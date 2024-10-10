@@ -17,10 +17,8 @@ import pyglet
 
 Viewer: Any = object
 try:
-    from gymnasium.envs.classic_control import rendering
     from pyglet.gl import glClearColor
 
-    Viewer = rendering.Viewer
 except (NameError, pyglet.canvas.xlib.NoSuchDisplayException):
     pass
 
