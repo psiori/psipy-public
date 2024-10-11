@@ -18,6 +18,7 @@ from collections import defaultdict
 from datetime import datetime
 from itertools import groupby
 from operator import itemgetter
+import sys
 from typing import Callable, ClassVar, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import numpy as np
@@ -1066,3 +1067,21 @@ if __name__ == "__main__":
     batch.compute_costs(lambda x: x.ravel())
     comp = batch.set_minibatch_size(-1).sort().costs_terminals[0][0].ravel()
     print(comp, len(comp))
+
+    if (len(sys.argv) > 1):
+        filename = sys.argv[1]
+        print("Reading batch from folder ", filename)
+        batch = Batch.from_hdf5(filename,
+                                action_channels=["move_index"],
+                                state_channels=["cart_position", 
+                                                "cart_velocity",
+                                                "pole_sine",
+                                                "pole_cosine",
+                                                "pole_velocity"],
+                                lookback=1)
+
+        print ("Number of observations: ", len(batch.observations))        
+
+        states = batch.set_minibatch_size(-1).sort().states[0]
+        print ("States: ", states[:10])
+    

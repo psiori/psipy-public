@@ -117,7 +117,7 @@ class ExpandableDataset:
         try:
             self.dataset.resize((rows, *self.incoming_shape))
         except ValueError as e:
-            if not str(e).startswith("Not a dataset"):
+            if not str(e).startswith("Not a dataset") and not str(e).startswith("Invalid dataset identifier"):
                 raise e
 
     def _maybe_expand(self) -> None:

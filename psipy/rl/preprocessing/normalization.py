@@ -75,6 +75,8 @@ class StackNormalizer(Saveable):
     def __init__(self, method: str = "minmax"):
         super().__init__(method=method)
         self._method = method
+        self._hasWarned = False
+
 
     def fit(self, data: np.ndarray, axis: Optional[int] = None) -> "StackNormalizer":
         """Fits the normalizer on the input data.
@@ -171,7 +173,9 @@ class StackNormalizer(Saveable):
             center = self.center
             scale = self.scale
         except AttributeError:
-            LOG.warning("Normalizer not fitted, returning values unchanged.")
+            if not self._hasWarned:
+                LOG.warning("Normalizer not fitted, returning values unchanged.")
+                self._hasWarned = True
             return data
 
         # Ensure that there are no zeros in the denominator.

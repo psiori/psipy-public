@@ -238,8 +238,6 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         if abs(x) > self.x_threshold:
             terminal = True
 
-            print("\n\n\n<<<<<<<<<\n IN get_next_state: TERMINAL with x={} and x_threshold={}\n\n\n<<<<<<<<<<\n".format(x, self.x_threshold))
-
         info["force"] = force
         info["theta_accel"] = thetaacc
         info["x_accel"] = xacc
@@ -369,6 +367,8 @@ def plot_swingup_state_history(
     filename: Optional[str] = None,
     episode_num: Optional[int] = None,
     figure: Optional[plt.Figure] = None,
+    do_display=True,
+    title_string=None
 ) -> None:
     """Creates a plot that details the controller behavior.
 
@@ -444,15 +444,24 @@ def plot_swingup_state_history(
         axes[4].legend()
 
     if episode_num is None:
-        figure.suptitle("Simulated Cartpole")
+        title = "Simulated Cartpole"
     else:
-        figure.suptitle(f"Simulated Cartpole, Episode {episode_num}")
-    
+        title = "Simulated Cartpole, Episode {}".format(episode_num)
+
+    if title_string:
+        title = title + " - " + title_string
+
+    figure.suptitle(title)
+   
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     if filename:
         figure.savefig(filename)
         # plt.close(figure)
-    else:
+    
+    if do_display:
         plt.pause(0.01)
+    else:
+        plt.close()
+        return None
 
     return figure
