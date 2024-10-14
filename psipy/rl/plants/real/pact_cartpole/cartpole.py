@@ -24,6 +24,7 @@ import zmq
 from psipy.rl import CM
 from psipy.rl.core.controller import Controller
 from psipy.rl.io.sart import SARTReader
+from psipy.rl.io.batch import Episode
 from psipy.rl.core.plant import Action, Plant, State
 
 from psipy.rl.plants.real.pact_cartpole.plc_zmq import Commands, HardwareComms
@@ -864,10 +865,14 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
 
 
 def plot_swingup_state_history(
+    episode: Optional[Episode] = None,
+    sart_path: Optional[str] = None,
+    episode_num: Optional[int] = None,
     plant: Optional[SwingupPlant] = None,
     filename: Optional[str] = None,
-    sart_path: Optional[str] = None,
     fig: Optional[plt.Figure] = None,
+    title_string: Optional[str] = None,
+    do_display: bool = True,
 ) -> None:
     """Creates a plot that details the controller behavior.
 
@@ -887,7 +892,7 @@ def plot_swingup_state_history(
 
     """
     cost = None
-    if sart_path:
+    if sart_path is not None:
         with SARTReader(sart_path) as sart:
             sart = sart.load_full_episode()
             x = sart[0][:, 0]
@@ -895,6 +900,16 @@ def plot_swingup_state_history(
             t = sart[0][:, 2]
             td = sart[0][:, 3]
             a = sart[0][:, 4]
+    elif episode is not None:
+        x = episode.observations[:, 0]
+        x_s = episode.observations[:, 1]
+        pole_sine = episode.observations[:, 2]
+        pole_cosine = episode.observations[:, 3]
+        td = episode.observations[:, 4]
+        t = episode.observations[:, 5]
+        a = episode.actions[:, 0]
+        cost = episode.costs
+
     else:
         plant = cast(SwingupPlant, plant)
         x = plant.df_history.cart_position
@@ -913,8 +928,6 @@ def plot_swingup_state_history(
     for ax in axs:
         ax.clear()
 
-    axs[3].twinx().clear()
-
     axs[0].plot(x, label="cart_position")
     axs[0].set_title("cart_position")
     axs[0].set_ylabel("Position")
@@ -922,11 +935,12 @@ def plot_swingup_state_history(
     axs[0].relim()
     axs[0].autoscale_view()
 
-    axs[1].plot(t, label="pole_angle")
-    axs[1].axhline(0, color="grey", linestyle=":", label="target")
+    axs[1].plot(pole_cosine, label="cos")
+    axs[1].plot(pole_sine, label="sin")
+#    axs[1].axhline(0, color="grey", linestyle=":", label="target")
     axs[1].set_title("Pole Angle")
     axs[1].relim()
-    axs[1].set_ylim((-3.15, 3.15))
+#    axs[1].set_ylim((-3.15, 3.15))
     axs[1].autoscale_view()
     axs[1].set_ylabel("Angle")
     axs[1].legend()
@@ -944,7 +958,7 @@ def plot_swingup_state_history(
     axs[3].relim()
     axs[3].autoscale_view()
 
-    axs2b = axs[3].twinx()
+    axs2b = axs[5]
     axs2b.plot(x_s, color="black", alpha=0.4, label="True Velocity")
     axs2b.set_ylabel("Steps/s")
     axs2b.legend(loc="upper right")
@@ -963,13 +977,25 @@ def plot_swingup_state_history(
         axs[4].relim()
         axs[4].autoscale_view()
 
-    plt.suptitle("NFQ Controller on Physical Swingup Model")
+    if episode_num is None:
+        title = "PACT Cartpole"
+    else:
+        title = "PACT Cartpole, Episode {}".format(episode_num)
+
+    if title_string:
+        title = title + " - " + title_string
+
+    plt.suptitle(title)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     if filename:
         plt.savefig(filename)
         #plt.close()
-    else:
+
+    if do_display:
         plt.pause(0.01)
+    else:
+        plt.close()
+        return None
 
     return fig
 
