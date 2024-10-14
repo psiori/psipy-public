@@ -870,7 +870,7 @@ def plot_swingup_state_history(
     episode_num: Optional[int] = None,
     plant: Optional[SwingupPlant] = None,
     filename: Optional[str] = None,
-    fig: Optional[plt.Figure] = None,
+    figure: Optional[plt.Figure] = None,
     title_string: Optional[str] = None,
     do_display: bool = True,
 ) -> None:
@@ -907,7 +907,7 @@ def plot_swingup_state_history(
         pole_cosine = episode.observations[:, 3]
         td = episode.observations[:, 4]
         t = episode.observations[:, 5]
-        a = episode.actions[:, 0]
+        a = episode._actions[:, 0]
         cost = episode.costs
 
     else:
@@ -919,11 +919,11 @@ def plot_swingup_state_history(
         a = plant.df_history.direction_ACT
         cost = plant.df_history.cost
 
-    if fig is None:
-        fig, axs = plt.subplots(5, figsize=(10, 8))
+    if figure is None:
+        figure, axs = plt.subplots(5, figsize=(10, 8))
     else:
-        plt.figure(fig.number)
-        axs = fig.axes
+        plt.figure(figure.number)
+        axs = figure.axes
 
     for ax in axs:
         ax.clear()
@@ -937,10 +937,10 @@ def plot_swingup_state_history(
 
     axs[1].plot(pole_cosine, label="cos")
     axs[1].plot(pole_sine, label="sin")
-#    axs[1].axhline(0, color="grey", linestyle=":", label="target")
+#   axs[1].axhline(0, color="grey", linestyle=":", label="target")
     axs[1].set_title("Pole Angle")
     axs[1].relim()
-#    axs[1].set_ylim((-3.15, 3.15))
+#   axs[1].set_ylim((-3.15, 3.15))
     axs[1].autoscale_view()
     axs[1].set_ylabel("Angle")
     axs[1].legend()
@@ -958,19 +958,19 @@ def plot_swingup_state_history(
     axs[3].relim()
     axs[3].autoscale_view()
 
-    axs2b = axs[5]
-    axs2b.plot(x_s, color="black", alpha=0.4, label="True Velocity")
-    axs2b.set_ylabel("Steps/s")
-    axs2b.legend(loc="upper right")
-    axs2b.relim()
-    axs2b.autoscale_view()
+#    axs2b = axs[5]
+#    axs2b.plot(x_s, color="black", alpha=0.4, label="True Velocity")
+#    axs2b.set_ylabel("Steps/s")
+#    axs2b.legend(loc="upper right")
+#    axs2b.relim()
+#    axs2b.autoscale_view()
 
     axs[3].relim()
     axs[3].autoscale_view()
 
 
     if cost is not None:
-        axs[4].plot(plant.df_history.cost, label="cost")
+        axs[4].plot(cost, label="cost")
         axs[4].set_title("cost")
         axs[4].set_ylabel("cost")
         axs[4].legend()
@@ -985,10 +985,10 @@ def plot_swingup_state_history(
     if title_string:
         title = title + " - " + title_string
 
-    plt.suptitle(title)
+    figure.suptitle(title)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     if filename:
-        plt.savefig(filename)
+        figure.savefig(filename)
         #plt.close()
 
     if do_display:
@@ -997,7 +997,7 @@ def plot_swingup_state_history(
         plt.close()
         return None
 
-    return fig
+    return figure
 
 
 if __name__ == "__main__":
