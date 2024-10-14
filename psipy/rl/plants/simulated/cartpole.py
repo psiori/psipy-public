@@ -141,6 +141,8 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
       
         super().__init__(cost_function=cost_function)
 
+        self.renderable = True
+
         self.x_threshold = x_threshold
         self.state_type = state_type
         self.action_type = action_type
