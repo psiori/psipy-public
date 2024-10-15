@@ -143,6 +143,7 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         state_type: Type[CartPoleState] = CartPoleState,
         action_type: Type[CartPoleAction] = CartPoleBangAction,
         render_mode: str = "human",
+        do_not_reset: bool = False,
     ):
         if cost_function is None:
             cost_function = make_default_cost_function(x_threshold)
@@ -151,6 +152,8 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         super().__init__(cost_function=cost_function)
 
         self.renderable = True
+
+        self.do_not_reset = do_not_reset
 
         self.x_threshold = x_threshold
         self.state_type = state_type
@@ -256,7 +259,8 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         return CartPoleState([x, x_dot, theta, sin, cos, theta_dot, force], 0.0, terminal)
     
     def notify_episode_stops(self) -> bool:
-        self.reset()
+        if not self.do_not_reset or self._current_state.terminal:
+            self.reset()
         return True
     
     def reset(self):
