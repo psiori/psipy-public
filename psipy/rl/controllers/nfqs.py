@@ -26,11 +26,13 @@ applying the algorithm to historic and/or off-policy data.
 
 import logging
 import random
+import sys
 import time
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union, cast
 
 import numpy as np
 import tensorflow as tf
+import tensorflow_probability as tfp
 from tensorflow.keras.utils import Sequence
 
 from psipy.core.io import MemoryZipFile
@@ -149,19 +151,24 @@ class PickyBatch(Sequence):
             costs = costs[:, None]
         assert len(costs.shape) == 2, "Be aware of broadcasting!"
 
+        states, actions = self.batch.states_actions[0]
+
         # .all() uses cache!
         next_states = self.batch.nextstates.all()  # (BATCH, state, dim, lookback)
         next_states = sticky_state_action_pairs(
             next_states, self.action_values_normalized
         )
 
+        print (next_states)
+
         # Note: The following does perform single-step inference! This might
         #       result in OOM errors when there is too much data.
         raw_qs = self.model(next_states).numpy()  # (BATCH * N_ACT, 1)
         qs = raw_qs.reshape(-1, len(self.action_values_normalized))  # (BATCH, N_ACT)
+
         if not doubleq:
             qs = qs.min(axis=1, keepdims=True)  # (BATCH, 1)
-        q_target = costs + gamma * qs
+        q_target = costs + gamma * qs * (1 - terminals)
 
         if not disable_terminals:
             # All terminals are bad terminals, as we are considering infinite
@@ -171,9 +178,17 @@ class PickyBatch(Sequence):
             # maximum immediate cost.
             q_target[terminals.ravel() == 1] = 1
 
+        print(f"\n\n\n>>>>>>>>>>\n\nqtargets n: { len(q_target) } max: {q_target.max()} min: {q_target.min()}")
+
+        for s, a, t, c, qt in zip(states, actions, terminals, costs, q_target):
+            if t:
+                print (">> TERMINAL transition ({}, {}, {}) with qtarget: {}".format(s, a, c, qt))
+
+        print ("\n>>>>>>>>>>>> {} TERMINALS\n\n".format(np.sum(terminals)))
+
         # Clamp down q values given their minimum value and clip values to
         # within sigmoid bounds to prevent saturation.
-        q_target = np.clip((q_target - q_target.min()) + 0.05, 0.05, 0.95)
+        # q_target = np.clip((q_target - q_target.min()) + 0.05, 0.05, 0.95)
 
         # qs[costs.ravel() == 0] = 0
 
@@ -235,6 +250,7 @@ class PickyBatch(Sequence):
             t = t[np.arange(len(t)), action_idx]
         if self.prioritized:
             return sa, t, w
+        
         return sa, t
 
 
@@ -271,7 +287,7 @@ class NFQs(Controller):
         doubleq: bool = False,
         optimizer: Union[str, tf.keras.optimizers.Optimizer] = "RMSProp",
         prioritized: bool = False,
-        disable_terminals: bool = False,
+        disable_terminals: bool = True,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -456,12 +472,18 @@ class NFQs(Controller):
 
         def max_q(y_true, y_preds):
             return tf.reduce_max(y_preds)
+        
+        def avg_qdelta(y_true, y_preds):
+            return tf.reduce_mean(tf.abs(y_preds-y_true))  # mean absolute error, easier to interpret than loss/MSE
+    
+        def median_qdelta(y_true, y_preds):
+            return tfp.stats.percentile(tf.abs(y_preds-y_true), 50)
 
         train_model = tf.keras.Model(self._model.inputs, self._model.outputs)
         train_model.compile(
             optimizer=self._optimizer,
-            loss="mean_squared_error",
-            metrics=[min_q, avg_q, max_q],
+            loss="MSE",
+            metrics=[avg_qdelta, median_qdelta, min_q, avg_q, max_q],
         )
 
         # Workaround for `AssertionError`s seen during multi-threaded fit.

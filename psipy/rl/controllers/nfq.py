@@ -8,6 +8,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 from tensorflow.keras.utils import Sequence
+from tensorflow.keras import layers as tfkl
 import keras
 
 from psipy.core.io import MemoryZipFile
@@ -771,3 +772,48 @@ class NFQ(Controller):
         obj = cls(model=model, action=action_type, **config)
         obj.normalizer = StackNormalizer.load(zipfile)
         return obj
+    
+
+    def model_with_extended_actions(self, action_type: Action):
+        """"creates a model with the same architecture and weights,
+        but with additional outputs for a super set of actions."""
+        assert(len(action_type.legal_values[0]) > len(self.action_values))
+        # TODO: assert start of legal values is the same for both action types
+
+        print ("Creating an extended model with additional actions")
+        print (self.action_values)
+        print (action_type.legal_values[0])
+
+        num_additional_actions = len(action_type.legal_values[0]) - len(self.action_values)
+
+        model = self._model
+        model_output = model.output
+        feature_layer = None
+        try:
+            feature_layer = model.get_layer(name="features")
+        except:
+            print("No layer named 'features' found, trying to use dense_2 as feature layer instead. Will fail, if also not found.")
+
+            feature_layer = model.get_layer(name="dense_2")
+
+        additional_output = tfkl.Dense(num_additional_actions, activation="sigmoid", name="extended_actions")(feature_layer.output)
+
+        new_outputs = tfkl.concatenate([model_output, additional_output], name="concatenated_outputs")
+
+        new_model = tf.keras.models.Model(inputs=model.inputs, outputs=new_outputs)
+
+        print("CONFIG: ", self.get_config())
+
+        config = self.get_config()
+        # Remove 'action_values' from the config
+        config.pop('action_values', None)
+
+        return NFQ(model=new_model, action=action_type, **config)
+
+
+
+
+
+
+
+
