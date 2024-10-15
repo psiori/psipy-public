@@ -76,28 +76,25 @@ class SwingupContinuousDiscreteAction(Action):
     dtype = "discrete"
     channels = ("direction",)
     legal_values = (
-        (  # SL: problem: 0 is not zero :-()  present zero is near 150 (oh: due to operator! )
-            #150,
-            #-100,
-            #100,
-            #200,
-            #-200,
-            #300,
-            #-300,
-            #400,
-            #-400,
-            # 500,
-            #-500,
-            # 600,
-            # -600,
-            # 700,
-            -500,
-            500,
-            #-700,
-            # 900,
-            # -900,
-            # 1000,
-            # -1000,
+        (
+            -300,
+            0,
+            300,
+        ),
+    )
+
+class SwingupContinuousExtendedDiscreteAction(Action):
+    """Any speed in either direction."""
+
+    dtype = "discrete"
+    channels = ("direction",)
+    legal_values = (
+        (
+            -300,
+            0,
+            300,
+            -60,
+            60,
         ),
     )
 
