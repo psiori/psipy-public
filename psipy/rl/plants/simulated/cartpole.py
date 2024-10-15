@@ -56,6 +56,15 @@ class CartPoleBangAction(CartPoleAction):
     channels = ("move",)
     legal_values = ((-10, 10),)
 
+class CartPoleExtendedBangAction(CartPoleAction):
+    """Action with left actions right actions"""
+
+    dtype = "discrete"
+    channels = ("move",)
+    legal_values = ((-10, 10, 0),)
+
+
+
 class CartPoleState(State):
     """Cartpole state that uses trig values for the angle instead of radian/deg."""
 
