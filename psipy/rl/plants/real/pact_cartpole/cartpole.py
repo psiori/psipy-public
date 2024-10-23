@@ -100,7 +100,21 @@ class SwingupContinuousExtendedDiscreteAction(Action):
             -150,
             150,
             -10,
-            10
+            10,  # ORIGINAL ENDED HERE
+            -5,
+             5,
+            -1,
+             1,
+           -20,
+            20,
+            -2,
+             2,
+            -3,
+             3,
+           -30,
+            30,
+           -90,
+            90
         ),
     )
 
