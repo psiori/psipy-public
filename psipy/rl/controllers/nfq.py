@@ -777,14 +777,14 @@ class NFQ(Controller):
     def model_with_extended_actions(self, action_type: Action):
         """"creates a model with the same architecture and weights,
         but with additional outputs for a super set of actions."""
-        assert(len(action_type.legal_values[0]) > len(self.action_values))
+        assert(len(action_type.legal_values[0]) > self._model.output.shape[1])
         # TODO: assert start of legal values is the same for both action types
 
         print ("Creating an extended model with additional actions")
         print (self.action_values)
         print (action_type.legal_values[0])
 
-        num_additional_actions = len(action_type.legal_values[0]) - len(self.action_values)
+        num_additional_actions = len(action_type.legal_values[0]) - self._model.output.shape[1]
 
         model = self._model
         model_output = model.output
@@ -796,9 +796,9 @@ class NFQ(Controller):
 
             feature_layer = model.get_layer(name="dense_2")
 
-        additional_output = tfkl.Dense(num_additional_actions, activation="sigmoid", name="extended_actions")(feature_layer.output)
+        additional_output = tfkl.Dense(num_additional_actions, activation="sigmoid", name="extended_actions_{}".format(len(action_type.legal_values[0])))(feature_layer.output)
 
-        new_outputs = tfkl.concatenate([model_output, additional_output], name="concatenated_outputs")
+        new_outputs = tfkl.concatenate([model_output, additional_output], name="concatenated_outputs_{}".format(len(action_type.legal_values[0])))
 
         new_model = tf.keras.models.Model(inputs=model.inputs, outputs=new_outputs)
 

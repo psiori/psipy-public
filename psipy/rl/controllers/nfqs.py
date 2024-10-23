@@ -571,6 +571,8 @@ class NFQs(Controller):
         config = zipfile.get("config.json")
         model = zipfile.get_keras("model.h5", custom_objects)
         action_meta = zipfile.get_json("Action.json")
+        print("NFQs._load action meta:", action_meta)
+        print("NFQs._load config:", config)
         assert isinstance(action_meta, dict)
         action_type = cls.load_action_type(action_meta, custom_objects)
         obj = cls(model=model, action=action_type, **config)
