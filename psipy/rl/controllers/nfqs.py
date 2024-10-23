@@ -418,8 +418,8 @@ class NFQs(Controller):
     
     @action_values.setter
     def action_values(self, action_values: np.ndarray):
-        self._action_values = action_values
-        self._config["action_values"] = action_values
+        self._action_values = np.asarray(action_values, dtype=float)
+        self._config.action_values = self._action_values
 
     def preprocess_observations(self, stacks: np.ndarray) -> np.ndarray:
         """Preprocesses observation stacks before those are passed to the network.
