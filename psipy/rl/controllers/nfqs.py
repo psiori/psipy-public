@@ -318,12 +318,10 @@ class NFQs(Controller):
         self.normalizer = StackNormalizer("meanstd")
 
         # As the action values are directly fed into the network, those as well
-        # are normalized.
-        self.action_normalizer = StackNormalizer("minmax")
-        self.action_normalizer.fit(self.action_values[..., None])
-        self.action_values_normalized = self.action_normalizer.transform(
-            self.action_values[..., None]
-        ).flatten()
+        # need to be normalized.
+        action_normalizer = StackNormalizer("minmax")
+        action_normalizer.fit(self.action_values[..., None])
+        self.action_normalizer = action_normalizer  # this will automatically repopulate the self.action_values_normalized
 
         self.action_repeat_max = num_repeat
         self.action_repeat = 0
@@ -401,6 +399,20 @@ class NFQs(Controller):
         if self.idoe:
             actions = self.doe_transform(actions)
         return actions, meta
+    
+
+    @property
+    def action_normalizer(self):
+        return self._action_normalizer
+
+    @action_normalizer.setter
+    def action_normalizer(self, action_normalizer: StackNormalizer):
+        self._action_normalizer = action_normalizer
+        self.action_values_normalized = self.action_normalizer.transform(
+            self.action_values[..., None]
+        ).flatten()
+
+        
 
     def preprocess_observations(self, stacks: np.ndarray) -> np.ndarray:
         """Preprocesses observation stacks before those are passed to the network.
@@ -492,6 +504,7 @@ class NFQs(Controller):
 
         self._train_model = train_model
 
+   
     def fit(
         self,
         batch: Batch,
@@ -560,6 +573,7 @@ class NFQs(Controller):
             ),
         )
         self.normalizer.save(zipfile)
+        self.action_normalizer.save(zipfile, "action_normalizer")
         return zipfile
 
     @classmethod
@@ -577,4 +591,11 @@ class NFQs(Controller):
         action_type = cls.load_action_type(action_meta, custom_objects)
         obj = cls(model=model, action=action_type, **config)
         obj.normalizer = StackNormalizer.load(zipfile)
+        try:
+            obj.action_normalizer = StackNormalizer.load(zipfile, "action_normalizer")
+            LOG.info("NFQs._load loaded action_normalizer with configuration:", obj.action_normalizer.get_config())
+        except Exception as e:
+            LOG.warning("POSSIBLY BROKEN MODEL: Failed to load action normalizer. This file is likely from an old NFQs model format. Will use default normalization instead. If you changed the action values after training, especially adding larger actions, this will likely lead to errors and an undefined behavior of the controller.")
+            LOG.warning(e)
+
         return obj
