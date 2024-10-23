@@ -503,8 +503,8 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         x_dot = (x_ - x) #/ (ts_ - ts)
         theta_dot = angle_slope(theta_, theta) #/ (ts_ - ts)
         self._prev_ts = ts_
-        right_dist = abs(self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET - x_ + self.zero_position)
-        left_dist = abs(self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET - x_ + self.zero_position)
+        right_dist = self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET - x_ + self.zero_position   # positive, if terminal state is still to the right (normal case)
+        left_dist = self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET - x_ + self.zero_position   # negative, if terminal state is still to the left (normal case)
         #operator = 0.0 # 150 if x_ < 0 else -150  #TODO 250
         obs = OrderedDict(
             cart_position=x_,
@@ -594,9 +594,14 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
             x_dot = (x_ - x) #/ (ts_ - self._prev_ts)
             theta_dot = angle_slope(theta_, theta) #/ (ts_ - self._prev_ts)
             self._prev_ts = ts_
-            right_dist = self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET -true_x
-            left_dist = - (self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET - true_x)
-            # print("L:\t", left_dist, "\tP:", true_x, "\tR:", right_dist)
+
+            right_dist = self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET - x_ + self.zero_position   # positive, if terminal state is still to the right (normal case)
+            left_dist = self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET - x_ + self.zero_position   # negative, if terminal state is still to the left 
+
+            # SL: this was not the same as in check_initial_state! see below
+            # right_dist = self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET -true_x
+            # left_dist = - (self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET - true_x)
+            print("L:\t", left_dist, "\tP:", true_x, "\tR:", right_dist)
             obs = dict(
                 cart_position=x_,
                 cart_velocity=x_dot,
@@ -1259,3 +1264,71 @@ if __name__ == "__main__":
         print("Done.")
     print_state()
     plant.motor_off()
+
+
+    class GeneralizedCartpolePlant(SwingupPlant):
+        """A cartpole plant that allows to set a relative set point on
+           the cart position axis. Allows moving the center or specifiying
+           specific position to move to.
+           
+           Make sure to use the dist_left / dist_right channels to encode
+           the bounding limits of the cart position axis."""
+
+        def __init__(self,
+                     *args,
+                     randomize_set_points=True,
+                     **kwargs):
+            super().__init__(*args, **kwargs)
+
+            self._set_point = self.CENTER  # center is the standard set point
+            self._current_relative_state = None
+
+            self._randomize_set_points = randomize_set_points
+
+        #
+        # QUESTION: where do set points belong?
+        #
+        # from industrial automation perspective: definitely to the controller.
+        # thus, we implement it here for now (for the convenience of it), but
+        # has to be also implemented in the controller (e.g. in a wrapper /
+        # glue code around the RL controller).
+        #
+
+        @property
+        def set_point(self):
+            return self._set_point
+
+        @set_point.setter
+        def set_point(self, position: float):
+            LOG.debug(f"Setting set point to {position}")
+            self._set_point = position
+            self._current_relative_state = None
+
+        def set_random_set_point(self):
+            self.set_point = np.random.uniform(
+                self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET * 1.5, 
+                self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET * 1.5)
+
+        def _get_next_state(
+            self, state: SwingupState,
+            action: SwingupContinuousDiscreteAction) -> SwingupState:
+
+            current_state = super()._get_next_state(state, action)
+            relative_state = current_state.copy()
+
+            relative_state.position -= self.set_point
+            self._current_relative_state = relative_state
+
+            return self._current_relative_state
+        
+        def check_initial_state(self, state: Optional[SwingupState]) -> SwingupState:
+            current_state = super().check_initial_state(state)
+            self._current_relative_state = current_state.copy()
+            self._current_relative_state.position -= self.set_point
+            return self._current_relative_state
+        
+        def notify_episode_stops(self):
+            if self._randomize_set_points:
+                self.set_random_set_point()
+            
+            return super().notify_episode_stops()
