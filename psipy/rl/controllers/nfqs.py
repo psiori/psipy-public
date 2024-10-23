@@ -309,8 +309,8 @@ class NFQs(Controller):
         self._model = model
         self.control_pairs = control_pairs
         if action_values is None:
-            action_values = tuple(self.action_type.legal_values[0])
-        self.action_values = np.asarray(action_values, dtype=float)
+            action_values = tuple(self.action_type.legal_values[0]) # TODO(SL,AH): should these go to the config? Because, presently, they won't. 
+        self._action_values = np.asarray(action_values, dtype=float) # presently, this is not using the setter by intention, to not alter the config values
 
         self.epsilon = 0.0
         self._memory = ObservationStack((len(self.state_channels),), lookback=lookback)
@@ -320,7 +320,7 @@ class NFQs(Controller):
         # As the action values are directly fed into the network, those as well
         # need to be normalized.
         action_normalizer = StackNormalizer("minmax")
-        action_normalizer.fit(self.action_values[..., None])
+        action_normalizer.fit(self._action_values[..., None])
         self.action_normalizer = action_normalizer  # this will automatically repopulate the self.action_values_normalized
 
         self.action_repeat_max = num_repeat
@@ -412,7 +412,14 @@ class NFQs(Controller):
             self.action_values[..., None]
         ).flatten()
 
-        
+    @property
+    def action_values(self):
+        return self._action_values
+    
+    @action_values.setter
+    def action_values(self, action_values: np.ndarray):
+        self._action_values = action_values
+        self._config["action_values"] = action_values
 
     def preprocess_observations(self, stacks: np.ndarray) -> np.ndarray:
         """Preprocesses observation stacks before those are passed to the network.
