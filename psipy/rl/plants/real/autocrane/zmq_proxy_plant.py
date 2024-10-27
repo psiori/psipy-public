@@ -170,6 +170,11 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneDiscreteAction]):
         """
         state = {}
 
+        # update limits
+        
+        self.trolley_min = float(message["trolley_pos_min"]) + 0.20  # 20 cm buffer
+        self.trolley_max = float(message["trolley_pos_max"]) - 0.20  # 20 cm buffer
+
         state["cycle_number"] = message["cycle_number"]
         state["cycle_started_at"] = message["cycle_started_at"]
         state["executed_at"] = message["executed_at"]
@@ -215,7 +220,8 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneDiscreteAction]):
 
         # move absolute position to a relative one in respect to the
         # present set point
-        state_dict["trolley_pos"] = state_dict["trolley_pos"] - self.set_point_trolley
+        if self.set_point_trolley is not None:
+            state_dict["trolley_pos"] = state_dict["trolley_pos"] - self.set_point_trolley
 
         # make limits relative
         state_dict["trolley_limit_dist_left"] = self.trolley_min - raw_trolley_pos
@@ -233,6 +239,8 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneDiscreteAction]):
         if raw_trolley_pos <= self.trolley_min or raw_trolley_pos >= self.trolley_max:
             print("ZMQProxy: Trolley limit reached. Terminal state.")
             new_state.terminal = True        
+
+        return new_state
 
     def _receive_message(self) -> dict:
         """
@@ -282,10 +290,6 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneDiscreteAction]):
         print("Received initial state from autocrane agent:", latest_message)
         state_dict = self._state_dict_from_autocrane_message(latest_message)
 
-        # update limits
-        self.trolley_min = float(state_dict["trolley_pos_min"]) + 0.20  # 20 cm buffer
-        self.trolley_max = float(state_dict["trolley_pos_max"]) - 0.20  # 20 cm buffer
-
         if self._trolley_set_point is None and self._randomize_set_points:
             self.set_random_set_point()
         
@@ -317,11 +321,12 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneDiscreteAction]):
         """
         Moves the trolley away from the limits if it is too close to them. Distance should be at least 0.50 meters.
         """
-        center = (self.trolley_min + self.trolley_max) / 2.0
         target_trolley_vel = 0.0
 
         while True:
             message = self._receive_message()
+
+            raw_trolley_pos = float(message["trolley_pos"])
 
             state_dict = self._state_dict_from_autocrane_message(message)
             state = self._process_and_update_from(state_dict, {
@@ -329,10 +334,14 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneDiscreteAction]):
             })
             cycle_number = state_dict["cycle_number"]
 
-            if state["trolley_pos"] > self.trolley_min + 0.50 and state["trolley_pos"] < self.trolley_max - 0.50:
+            print (f"IN MOVE AWAY FROM LIMITS: Cycle { cycle_number } Trolley position: {message['trolley_pos']}, limits: {self.trolley_min} - {self.trolley_max}")
+
+            if raw_trolley_pos > self.trolley_min + 0.50 and raw_trolley_pos < self.trolley_max - 0.50:
                 break   # done, good enough.
 
-            target_trolley_vel = 0.268 if state["trolley_pos"] <= center else -0.268
+            center = (self.trolley_min + self.trolley_max) / 2.0
+
+            target_trolley_vel = 0.268 if raw_trolley_pos <= center else -0.268
 
             self.action_socket.send_json({
                 "trolley_target_vel": target_trolley_vel,

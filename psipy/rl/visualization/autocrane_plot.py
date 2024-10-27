@@ -70,7 +70,6 @@ class AutocraneTrolleyTrajectoryPlot:
         self.axs[1].plot(sway, label="sway")
         self.axs[1].axhline(0, color="grey", linestyle=":", label="target")
         self.axs[1].set_title("sway")
-        self.axs[1].set_ylim((-0.5, 0.5))
         self.axs[1].set_ylabel("Sway")
         self.axs[1].legend()
 
@@ -79,6 +78,7 @@ class AutocraneTrolleyTrajectoryPlot:
         self.axs[2].axhline(0, color="grey", linestyle=":")
         self.axs[2].set_title("Control")
         self.axs[2].set_ylabel("Velocity")
+        self.axs[2].set_ylim((-0.5, 0.5))
         self.axs[2].legend(loc="upper left")
 
         if cost is not None:
