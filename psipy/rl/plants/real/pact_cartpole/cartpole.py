@@ -105,13 +105,13 @@ class SwingupContinuousExtendedDiscreteAction(Action):
              5,
             -1,
              1,
-           -20,
+            -20,
             20,
             -2,
              2,
             -3,
              3,
-           -30,
+            -30,
             30,
            -90,
             90
@@ -615,7 +615,7 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
             # SL: this was not the same as in check_initial_state! see below
             # right_dist = self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET -true_x
             # left_dist = - (self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET - true_x)
-            print("L:\t", left_dist, "\tP:", true_x, "\tR:", right_dist)
+            # print("L:\t", left_dist, "\tP:", true_x, "\tR:", right_dist)
             obs = dict(
                 cart_position=x_,
                 cart_velocity=x_dot,
@@ -746,6 +746,9 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         the goal region, and so the saved model needs to be double checked.
         """
         angle_goal = 0.15
+
+        if state is None:
+            return False
 
         if np.abs(state["pole_angle"]) < angle_goal:
             return True
@@ -1280,7 +1283,7 @@ if __name__ == "__main__":
     plant.motor_off()
 
 
-    class GeneralizedCartpolePlant(SwingupPlant):
+class GeneralizedCartpolePlant(SwingupPlant):
         """A cartpole plant that allows to set a relative set point on
            the cart position axis. Allows moving the center or specifiying
            specific position to move to.
@@ -1327,18 +1330,23 @@ if __name__ == "__main__":
             self, state: SwingupState,
             action: SwingupContinuousDiscreteAction) -> SwingupState:
 
-            current_state = super()._get_next_state(state, action)
+            current_state = super()._get_next_state(self._current_state, action)
             relative_state = current_state.copy()
 
-            relative_state.position -= self.set_point
+            relative_state["cart_position"] = relative_state["cart_position"] - self.set_point
             self._current_relative_state = relative_state
+
+            print("L:\t", relative_state["dist_left"], "\tP:", relative_state["cart_position"], "\tR:", relative_state["dist_right"])
 
             return self._current_relative_state
         
         def check_initial_state(self, state: Optional[SwingupState]) -> SwingupState:
-            current_state = super().check_initial_state(state)
-            self._current_relative_state = current_state.copy()
-            self._current_relative_state.position -= self.set_point
+            current_state = super().check_initial_state(None)
+            relative_state = current_state.copy()
+            
+            relative_state["cart_position"] = relative_state["cart_position"] - self.set_point
+            self._current_relative_state = relative_state
+
             return self._current_relative_state
         
         def notify_episode_stops(self):
