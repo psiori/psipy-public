@@ -5,37 +5,16 @@ from typing import Optional
 from psipy.rl.core.plant import Plant, State, Action
 
 """
-    C/C++ side of the crane agent where the state is filled:
+    ZMQ Proxy Plant for Autocrane
 
-    state["cycle_number"] = CYCLE.counter;
-    state["cycle_started_at"] = CYCLE.startedAt.time_since_epoch().count();
-    state["executed_at"] = t.time_since_epoch().count();
+    This module defines the AutocraneZMQProxyPlant class, which interfaces with the autocrane core via ZeroMQ. It includes state and action definitions specific to the autocrane, facilitating remote control and monitoring of the crane's components (gantry, hoist, trolley, and grapple) through a discrete action space.
 
-    state["crane_active"] = agent->wm->isCraneActive();
-    state["behaviour_active"] = this->active;
+    This plant is ready to be used with the psipy RL framework and can be run in a control loop as any other plant.
 
-    state["gantry_pos"] = agent->crane->gantry->getCurrentPos(t);
-    state["hoist_pos"] = agent->crane->hoist->getCurrentPos(t);
-    state["trolley_pos"] = agent->crane->trolley->getCurrentPos(t);
-    state["grapple_pos"] = agent->crane->grapple->getCurrentPos(t); // rotation
+    On the autocrane core side, the ZMQProxy - Behavior needs to be activated.
+    It serves as the endpoint for sending states and receiving actions. The proxy expects an action to be received within the same cycle the state was sent. It will ignore and drop any actions received late, or containing a different cycle number. Presently, a cycle is 50ms max on the core side, with even less time for the ZMQProxy to be able to wait. It's important to note that the core will not wait for the proxy to be ready or reply; it will just continue its control cycles and execution, sending out new state information every cycle, independently of whether the proxy read this information and did or did not reply in time.
 
-    state["gantry_vel"] = agent->crane->gantry->getCurrentVelocity();
-    state["hoist_vel"] = agent->crane->hoist->getCurrentVelocity();
-    state["trolley_vel"] = agent->crane->trolley->getCurrentVelocity();
-    state["grapple_vel"] = agent->crane->grapple->getCurrentVelocity();
-
-    state["grapple_sway_trolley"] = agent->wm->getSwayAngleTrolley(t); // lateral sway
-    state["grapple_sway_gantry"] = agent->wm->getSwayAngleGantry(t); // vertical sway
-
-    state["grapple_loaded"] = agent->crane->grapple->isLoaded(t);
-
-    // CraneSpecifications specs = *agent->crane->specs;
-    state["trolley_pos_min"] = agent->crane->trolley->minPos()  ;
-    state["trolley_pos_max"] = agent->crane->trolley->maxPos();
-    state["trolley_max_speed"] = agent->crane->trolley->getMaxAllowedSpeed();
-
-
-    From the configuration of the decision making of the minicrane, for the trolley axis:
+    Some specification of the minicrane, for the trolley axis:
 
     speed_max_possible: 0.2680195074658086
     speed_max_allowed: 0.2680195074658086
@@ -257,14 +236,17 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneDiscreteAction]):
 
     def _receive_message(self) -> dict:
         """
-        Receives a message from the Autocrane system.
+        Receives the latest message from the Autocrane system. Will read all available messages until none are left and return only the latest one.
+        If no message is available yet, it will block and wait for one to arrive
+
+        Returning only the latest message ensures synchronization between core and proxy, even when the proxy is inactive (e.g., during controller updates). This should not happen during loop execution, because here, in that situation, it would cause information loss, destroy transition integrity, and cause jitter. Autocrane core will notice that the proxy is not repsoning in time and will warn about it in the logfiles. We have not duplicated a warning mechanism here on this side. Thus, check the autocrane core logs to make sure this does not happen with your experimental setup.
         """
         latest_message = None
         while True:
             try:
                 message = self.state_socket.recv_json(flags=zmq.NOBLOCK)
                 latest_message = message
-            except zmq.Again:
+            except zmq.Again:  # no message received yet
                 if latest_message is not None:
                     break
                 continue
