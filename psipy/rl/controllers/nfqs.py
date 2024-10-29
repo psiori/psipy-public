@@ -151,7 +151,7 @@ class PickyBatch(Sequence):
             costs = costs[:, None]
         assert len(costs.shape) == 2, "Be aware of broadcasting!"
 
-        states, actions = self.batch.states_actions[0]
+        #states, actions = self.batch.states_actions[0]
 
         # .all() uses cache!
         next_states = self.batch.nextstates.all()  # (BATCH, state, dim, lookback)
@@ -159,7 +159,7 @@ class PickyBatch(Sequence):
             next_states, self.action_values_normalized
         )
 
-        print (next_states)
+        #print (next_states)
 
         # Note: The following does perform single-step inference! This might
         #       result in OOM errors when there is too much data.
@@ -178,13 +178,13 @@ class PickyBatch(Sequence):
             # maximum immediate cost.
             q_target[terminals.ravel() == 1] = 1
 
-        print(f"\n\n\n>>>>>>>>>>\n\nqtargets n: { len(q_target) } max: {q_target.max()} min: {q_target.min()}")
+        #print(f"\n\n\n>>>>>>>>>>\n\nqtargets n: { len(q_target) } max: {q_target.max()} min: {q_target.min()}")
 
-        for s, a, t, c, qt in zip(states, actions, terminals, costs, q_target):
-            if t:
-                print (">> TERMINAL transition ({}, {}, {}) with qtarget: {}".format(s, a, c, qt))
-
-        print ("\n>>>>>>>>>>>> {} TERMINALS\n\n".format(np.sum(terminals)))
+        #for s, a, t, c, qt in zip(states, actions, terminals, costs, q_target):
+        #    if t:
+        #        print (">> TERMINAL transition ({}, {}, {}) with qtarget: {}".format(s, a, c, qt))
+        #
+        #print ("\n>>>>>>>>>>>> {} TERMINALS\n\n".format(np.sum(terminals)))
 
         # Clamp down q values given their minimum value and clip values to
         # within sigmoid bounds to prevent saturation.
