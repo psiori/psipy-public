@@ -79,7 +79,8 @@ def costfunc(states: np.ndarray) -> np.ndarray:
     theta = states[:, THETA_CHANNEL_IDX]             # SL TODO: if using cosine, needs to change 
     theta_speed = states[:, THETA_CHANNEL_IDX + 1]   
 
-    costs = (abs(1.0-theta) > 0.2) * 0.01 
+    #costs = (abs(1.0-theta) > 0.2) * 0.01 
+    costs = (1.0-(theta+1.0)/2.0) * 0.01  # cosinus scaled from 0 to 1 times step cost
     #costs = (1.0-(theta+1.0)/2.0) / 100.0 + (abs(theta_speed) > 0.45) * (abs(theta_speed) - 0.45) / 8.0 #SL orig: tanh2(theta, C=0.01, mu=0.5)
                               # why this: gives 1 when standing up and 0 when hanging down (bc theta..)  -- probably divided to make sure its smaller than terminal costs of failure
     #costs += tanh2(theta_speed, C=0.01, mu=2.5)

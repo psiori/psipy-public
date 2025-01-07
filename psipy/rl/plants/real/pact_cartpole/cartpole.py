@@ -29,7 +29,7 @@ from psipy.rl.core.plant import Action, Plant, State
 
 from psipy.rl.plants.real.pact_cartpole.plc_zmq import Commands, HardwareComms
 
-__all__ = [
+__all__ = [ 
     "SwingupAction",
     "SwingupPlant",
     "SwingupState",
@@ -101,28 +101,28 @@ class SwingupContinuousExtendedDiscreteAction(Action):
             150,
             -10,
             10,  # ORIGINAL ENDED HERE
-            -5,
-             5,
-            -1,
-             1,
-            -20,
-            20,
-            -2,
-             2,
-            -3,
-             3,
-            -30,
-            30,
-           -90,
-            90,
-           -40,
-            40,
-           -50,
-            50,
-           -100,
-            100,
-           -200,
-            200
+#            -5,
+#             5,
+#            -1,
+#             1,
+#            -20,
+#            20,
+#           -2,
+#             2,
+#            -3,
+#             3,
+#            -30,
+#            30,
+#           -90,
+#            90,
+#           -40,
+#            40,
+#           -50,
+#            50,
+#           -100,
+#            100,
+#           -200,
+#            200
         ),
     )
 
