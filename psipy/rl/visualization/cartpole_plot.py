@@ -9,20 +9,31 @@ class CartPoleTrajectoryPlot:
                  filename=None,
                  cart_position_idx: int = 0,
                  cart_velocity_idx: int = 1,
+                 pole_angle_idx: int = 2,
                  pole_sine_idx: int = 3,
                  pole_cosine_idx: int = 4,
                  pole_velocity_idx: int = 5,
+                 cart_position_min: float = None,
+                 cart_position_max: float = None,
+                 cart_position_target_min: float = None,
+                 cart_position_target_max: float = None,
                  do_display: bool = True):
         self.cart_position_idx = cart_position_idx
         self.cart_velocity_idx = cart_velocity_idx
+        self.pole_angle_idx = pole_angle_idx
         self.pole_sine_idx = pole_sine_idx
         self.pole_cosine_idx = pole_cosine_idx
         self.pole_velocity_idx = pole_velocity_idx
+        self.cart_position_min = cart_position_min
+        self.cart_position_max = cart_position_max
+        self.cart_position_target_min = cart_position_target_min    
+        self.cart_position_target_max = cart_position_target_max
 
         self.episode = None
         self.filename = filename
         self.fig = None
         self.axs = None
+        self.ax1b = None
         self.dirty = True
         self.do_display = do_display
         self.episode_num = None
@@ -59,9 +70,14 @@ class CartPoleTrajectoryPlot:
         for ax in self.axs:
             ax.clear()
 
+        if self.ax1b is not None:
+            self.ax1b.clear()
+
         x = self.episode.observations[:, self.cart_position_idx]
         x_s = self.episode.observations[:, self.cart_velocity_idx]
         # t = self.episode.observations[:, self.pole_theta_idx]
+        if self.pole_angle_idx is not None:
+            pole_angle = self.episode.observations[:, self.pole_angle_idx]
         pole_sine = self.episode.observations[:, self.pole_sine_idx]
         pole_cosine = self.episode.observations[:, self.pole_cosine_idx]
         td = self.episode.observations[:, self.pole_velocity_idx]
@@ -70,28 +86,54 @@ class CartPoleTrajectoryPlot:
     
 
         self.axs[0].plot(x, label="cart_position")
-        self.axs[0].set_title("cart_position")
+        self.axs[0].set_title("cart position")
         self.axs[0].set_ylabel("Position")
+        if self.cart_position_min is not None and self.cart_position_max is not None:
+            self.axs[0].set_ylim(self.cart_position_min, self.cart_position_max)
+        if self.cart_position_target_min is not None and self.cart_position_target_max is not None:
+            self.axs[0].axhline(self.cart_position_target_min, color="grey", linestyle=":", label="target")
+            self.axs[0].axhline(self.cart_position_target_max, color="grey", linestyle=":")
+
         self.axs[0].legend()
+
+
 
         self.axs[1].plot(pole_cosine, label="cos")
         self.axs[1].plot(pole_sine, label="sin")
         self.axs[1].axhline(0, color="grey", linestyle=":", label="target")
-        self.axs[1].set_title("Angle")
-        #self.axs[1].set_ylim((-1.0, 1,0))
+        self.axs[1].set_title("pole angle")
+        self.axs[1].set_ylim(-1.1, 1.1)
         self.axs[1].set_ylabel("Angle")
-        self.axs[1].legend()
+
+        if self.pole_angle_idx is not None:
+            if self.ax1b is None:   
+                self.ax1b = self.axs[1].twinx()
+            self.ax1b.plot(pole_angle, label="angle", color="black", alpha=0.4, linewidth=0.5)
+            self.ax1b.set_ylabel("Radians")
+            self.ax1b.set_ylim((-np.pi * 1.1, np.pi * 1.1))
+            
+            # Get handles and labels from both axes
+            lines1, labels1 = self.axs[1].get_legend_handles_labels()
+            lines2, labels2 = self.ax1b.get_legend_handles_labels()
+            
+            # Combine legends from both axes
+            self.ax1b.legend(lines1 + lines2, labels1 + labels2, loc='center right')
+        else:
+            self.axs[1].legend()
+
+
 
         self.axs[2].plot(td, label="pole_velocity")
-        self.axs[2].set_title("pole_velocity")
+        self.axs[2].set_title("pole velocity")
         self.axs[2].set_ylabel("Angular Vel")
+        self.axs[2].set_ylim(-0.7, 0.7)
         self.axs[2].legend()
 
-        self.axs[3].plot(a, label="Action")
+        self.axs[3].plot(a, label="action")
         self.axs[3].axhline(0, color="grey", linestyle=":")
-        self.axs[3].set_title("Control")
+        self.axs[3].set_title("control")
         self.axs[3].set_ylabel("Velocity")
-        self.axs[3].legend(loc="upper left")
+        self.axs[3].legend()
      #   axes2b = axs[3].twinx()
      #   axes2b.plot(x_s, color="black", alpha=0.4, label="True Velocity")
      #   axes2b.set_ylabel("Steps/s")
@@ -100,7 +142,8 @@ class CartPoleTrajectoryPlot:
         if cost is not None:
             self.axs[4].plot(cost, label="cost")
             self.axs[4].set_title("cost")
-            self.axs[4].set_ylabel("cost")
+            self.axs[4].set_ylabel("Cost")
+            self.axs[4].set_ylim(ymin=-0.0005)
             self.axs[4].legend()
 
         if self.episode_num is None:
