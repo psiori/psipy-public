@@ -61,7 +61,7 @@ Read more: :mod:`psipy.rl.core.control`
 
 # Imports
 from psipy.rl import io, core, visualization   
-from psipy.rl.core.cycle_manager import CM
+#from psipy.rl.core.cycle_manager import CM
 from psipy.rl.loop import Loop
 
 # Define what should be available when importing from psipy.rl
@@ -71,5 +71,5 @@ __all__ = [
     "loop",
     "Loop",
     "visualization",
-    "CM",
+#    "CM",
 ]
