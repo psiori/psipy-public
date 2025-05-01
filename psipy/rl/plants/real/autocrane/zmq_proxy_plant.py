@@ -38,10 +38,13 @@ class AutocraneState(State):
         "grapple_loaded",
         "trolley_limit_dist_left",
         "trolley_limit_dist_right",
+        "hoist_limit_dist_up",
+        "hoist_limit_dist_down",
         "gantry_target_vel_ACT",
         "hoist_target_vel_ACT",
         "trolley_target_vel_ACT",
         "grapple_target_vel_ACT",
+        "weight",
     )
 
 class AutocraneDiscreteAction(Action):
@@ -153,6 +156,20 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneDiscreteAction]):
         print(f"Setting set point to {position}")
         self._trolley_set_point = position
 
+    @property
+    def set_point_hoist(self):
+        """
+        The current set point for the hoist position.
+        """
+        return self._hoist_set_point
+
+    @set_point_hoist.setter
+    def set_point_hoist(self, position: float):
+        """
+        Sets the set point for the hoist position.
+        """
+        print(f"Setting set point to {position}")
+        self._hoist_set_point = position
 
     def set_random_set_point(self):
         """
@@ -166,6 +183,14 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneDiscreteAction]):
         self.set_point_trolley = np.random.uniform(
             self.trolley_min + 0.1 * (self.trolley_max - self.trolley_min),
             self.trolley_max - 0.1 * (self.trolley_max - self.trolley_min)
+        )
+
+        if self.hoist_min is None or self.hoist_max is None:
+            return
+
+        self.set_point_hoist = np.random.uniform(
+            self.hoist_min + 0.1 * (self.hoist_max - self.hoist_min),
+            self.hoist_max - 0.1 * (self.hoist_max - self.hoist_min)
         )
 
     def _state_dict_from_autocrane_message(self, message: dict) -> AutocraneState:
