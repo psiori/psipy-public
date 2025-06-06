@@ -10,7 +10,7 @@ import tensorflow as tf
 from tensorflow.keras import layers as tfkl
 import numpy as np
 
-from psipy.rl.controllers.nfq import NFQ
+from psipy.rl.controllers.nfqs import NFQs
 from psipy.rl.io.batch import Batch, Episode
 from psipy.rl.io.sart import SARTReader
 from psipy.rl.loop import Loop
@@ -22,22 +22,32 @@ from psipy.rl.plants.simulated.cartpole import (
 #from psipy.rl.visualization.plotting_callback import PlottingCallback
 
 # Define where we want to save our SART files
-sart_folder = "psidata-sart-cartpole-swingup"
+sart_folder = "psidata-nfs-sart-cartpole-swingup"
 
 
 # Create a model based on state, action shapes and lookback
-def make_model(n_inputs, n_outputs, lookback):
-    inp = tfkl.Input((n_inputs, lookback), name="state")
+def make_model(n_inputs, lookback):
+    inp = tfkl.Input((n_inputs, lookback), name="states")
+    act = tfkl.Input((1,), name="actions")
     net = tfkl.Flatten()(inp)
+    net = tfkl.concatenate([act, net])
     net = tfkl.Dense(256, activation="relu")(net)
     net = tfkl.Dense(256, activation="relu")(net)
     net = tfkl.Dense(100, activation="tanh")(net)
-    net = tfkl.Dense(n_outputs, activation="sigmoid")(net)
-    return tf.keras.Model(inp, net)
+    net = tfkl.Dense(1, activation="sigmoid")(net)
+    return tf.keras.Model([inp, act], net)
 
+state_channels = [
+    "cart_position",
+    "cart_velocity",
+    "pole_sine",
+    "pole_cosine",
+    "pole_velocity",
+#   "move_ACT",  # add, if lookback > 1
+]
 
-CART_POSITION_CHANNEL_IDX = 0
-COSINE_CHANNEL_IDX = 4
+CART_POSITION_CHANNEL_IDX = state_channels.index("cart_position")
+COSINE_CHANNEL_IDX = state_channels.index("pole_cosine")
 
 x_threshold=3.6
 
@@ -51,11 +61,10 @@ def make_cosine_cost_func(x_boundary: float=2.4) -> Callable[[np.ndarray], np.nd
 
             if abs(position) >= x_boundary:
                 cost = 1.0
-            elif abs(position) >= x_boundary*0.9:
+            elif abs(position) >= x_boundary*0.9: # close to x_boundary
                 cost = 0.1
-            else:
+            else: 
                 cost = (1.0-(cosine+1.0)/2.0) / 100.0
-            #print(cost)
             return cost
         
         position = states[:, CART_POSITION_CHANNEL_IDX]
@@ -70,7 +79,10 @@ def make_cosine_cost_func(x_boundary: float=2.4) -> Callable[[np.ndarray], np.nd
         return costs
     return cosine_costfunc
 
-def make_sparse_cost_func(x_boundary: float=2.4) -> Callable[[np.ndarray], np.ndarray]:
+def make_sparse_cost_func(x_boundary: float=2.4,
+                          step_cost: float=0.01,
+                          use_cosine: bool=True,
+                          upright_margin: float=0.2) -> Callable[[np.ndarray], np.ndarray]:
     def sparse_costfunc(states: np.ndarray) -> np.ndarray:
         # unfortunately, we need to provide a vectorized version (for the batch
         # processing in the controller) as well as a single state verison (for the
@@ -78,27 +90,35 @@ def make_sparse_cost_func(x_boundary: float=2.4) -> Callable[[np.ndarray], np.nd
 
         if np.ndim(states) == 1:  # this is the version for a single state
             #print("WARNING: states is a 1D list. This should not happen.")
+
             position = states[CART_POSITION_CHANNEL_IDX]
             cosine = states[COSINE_CHANNEL_IDX]
 
             if abs(position) >= x_boundary:
-                cost = 1.0
+                cost = 1.0  # failing terminal state
             elif abs(position) >= x_boundary*0.9:
-                cost = 0.1
+                cost = step_cost * 10
             elif abs(position) <= x_boundary*0.2:
-                cost = (1.0-(cosine+1.0)/2.0) / 100.0
+                if use_cosine:
+                    cost = (1.0-(cosine+1.0)/2.0) * step_cost
+                else:
+                    cost = (abs(1.0-cosine) > upright_margin) * step_cost
             else:
-                cost = 0.01
+                cost = step_cost
             #print(cost)
             return cost
         
         position = states[:, CART_POSITION_CHANNEL_IDX]
         cosine = states[:, COSINE_CHANNEL_IDX]
 
-        costs = (1.0-(cosine+1.0)/2.0) / 100.0  # can only get lower costs in center of x axis
-        costs[abs(position) >= x_boundary*0.2] = 0.01  # standard step costs 
-        costs[abs(position) >= x_boundary*0.9] = 0.1   # 10x step costs close to x_boundary
-        costs[abs(position) >= x_boundary] = 1.0       # 100x step costs in terminal states
+        if use_cosine:
+            costs = (1.0-(cosine+1.0)/2.0) * step_cost  # can only get lower costs in center of x axis
+        else:
+            costs = (abs(1.0-cosine) > upright_margin) * step_cost
+
+        costs[abs(position) >= x_boundary*0.2] = step_cost       # standard step costs 
+        costs[abs(position) >= x_boundary*0.9] = step_cost * 10  # 10x step costs close to x_boundary
+        costs[abs(position) >= x_boundary] = 1.0                 # 100x step costs in terminal states
 
         # ATTENTION, a word regarding the choice of terminal costs and "step costs":
         # the relation of terminal costs to step costs depends on the gamma value.
@@ -112,9 +132,7 @@ def make_sparse_cost_func(x_boundary: float=2.4) -> Callable[[np.ndarray], np.nd
         # or your treatment of the terminal transition is not correct (e.g. not doing a TD update
         # on these transitions at all, wrong scaling, etc.). We have seen both types of errors
         # (terminal costs to low, wrong handling of terminal transitions) in our own code as
-        # well as our students code, but also in "prominent" projects and papers.
-
-        #print(costs)
+        # well as our students code, but also in "prominent" projects and papers. So, make sure to check this twice
 
         return costs
     return sparse_costfunc
@@ -127,7 +145,11 @@ used_cost_func = sparse_cost_func
 
 print(">>> ATTENTION: chosen cost function: ", used_cost_func)
 
-plant = CartPole(x_threshold=x_threshold, cost_function=used_cost_func)  # note: this is instantiated!
+plant = CartPole(x_threshold=x_threshold,
+                 cost_function=CartPole.cost_func_wrapper(
+                     used_cost_func,
+                     state_channels))
+
 ActionType = CartPoleBangAction
 StateType = CartPoleState
 
@@ -277,15 +299,14 @@ lookback = 1
 
 
 # Make the NFQ model
-model = make_model(len(StateType.channels()), len(ActionType.legal_values[0]), lookback)
-nfq = NFQ(
+model = make_model(len(state_channels), lookback)
+nfq = NFQs(
     model=model,
-    action_channels=("move",),
-    state_channels=StateType.channels(),
+    state_channels=state_channels,
     action=ActionType,
     action_values=ActionType.legal_values[0],
     lookback=lookback,
-    scale=True,
+#    scale=True,
 )
 nfq.epsilon = 0.1
 
@@ -305,14 +326,6 @@ nfq.epsilon = old_epsilon
 metrics = { "total_cost": [], "avg_cost": [], "cycles_run": [], "wall_time_s": [] }
 min_avg_step_cost = 0.01  # if avg costs of an episode are less than 105% of this, we save the model
 
-# Load the collected data
-#batch = Batch.from_hdf5(
-#    sart_folder,
-#    action_channels=["move_index",],
-#    lookback=lookback,
-#    control=nfq,
-#)
-
 fig = None
 do_eval = True
 
@@ -320,12 +333,13 @@ do_eval = True
 for i in range(200):
     loop.run(1, max_episode_steps=500)
 
-    #batch.append_from_hdf5(sart_folder,
-    #                       action_channels=["move_index",])
+    action_channels = (f"{ActionType.channels[0]}",)
+    print(">>> action_channels: ", action_channels)
 
     batch = Batch.from_hdf5(
         sart_folder,
-        action_channels=["move_index",],
+        action_channels=action_channels,
+        state_channels=state_channels,
         lookback=lookback,
         control=nfq,
     )

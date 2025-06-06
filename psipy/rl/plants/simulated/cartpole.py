@@ -54,7 +54,7 @@ class CartPoleBangAction(CartPoleAction):
 
     dtype = "discrete"
     channels = ("move",)
-    legal_values = ((-10, 10),)
+    legal_values = ((-10, 0, 10),)
 
 class CartPoleExtendedBangAction(CartPoleAction):
     """Action with left actions right actions"""
