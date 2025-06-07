@@ -56,6 +56,7 @@ def make_model(n_inputs, lookback):
     act = tfkl.Input((1,), name="actions")
     net = tfkl.Flatten()(inp)
     net = tfkl.concatenate([act, net])
+    # net = tfkl.Dense(n_inputs * lookback * 20, activation="relu")(net) # add this layer if you remove velocities from the state
     net = tfkl.Dense(256, activation="relu")(net)
     net = tfkl.Dense(256, activation="relu")(net)
     net = tfkl.Dense(100, activation="tanh")(net)
