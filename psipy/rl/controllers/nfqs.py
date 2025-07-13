@@ -25,6 +25,7 @@ applying the algorithm to historic and/or off-policy data.
 """
 
 import logging
+import itertools
 import random
 import sys
 import time
@@ -50,6 +51,33 @@ __all__ = ["NFQs"]
 LOG = logging.getLogger(__name__)
 
 
+def generate_multi_dimensional_action_combinations(legal_values: Tuple[Tuple, ...]) -> np.ndarray:
+    """Generate all possible combinations of multi-dimensional discrete actions.
+    
+    Args:
+        legal_values: Tuple of tuples, where each inner tuple contains the legal values
+                     for one action dimension.
+    
+    Returns:
+        Array of shape (N_ACTIONS, N_DIMENSIONS) containing all possible action combinations.
+    
+    Example:
+        >>> legal_values = ((-1, 0, 1), (-1, 0, 1))  # 2D actions with 3 values each
+        >>> generate_multi_dimensional_action_combinations(legal_values)
+        array([[-1, -1],
+               [-1,  0],
+               [-1,  1],
+               [ 0, -1],
+               [ 0,  0],
+               [ 0,  1],
+               [ 1, -1],
+               [ 1,  0],
+               [ 1,  1]])
+    """
+    combinations = list(itertools.product(*legal_values))
+    return np.array(combinations, dtype=float)
+
+
 def make_state_action_pairs(
     states: Union[Dict[str, np.ndarray], np.ndarray], action_values: np.ndarray
 ) -> Union[Dict[str, np.ndarray], Tuple[np.ndarray, np.ndarray]]:
@@ -63,28 +91,29 @@ def make_state_action_pairs(
     Example::
 
         >>> states = np.array([[1, 2, 3], [4, 5, 6]])
-        >>> actions = np.array([-1, -2])
+        >>> actions = np.array([[-1, -2], [-3, -4]])
         >>> states, actions = make_state_action_pairs(states, actions)
         >>> states.tolist()
         [[1, 2, 3], [1, 2, 3], [4, 5, 6], [4, 5, 6]]
         >>> actions.tolist()
-        [[-1], [-2], [-1], [-2]]
+        [[-1, -2], [-1, -2], [-3, -4], [-3, -4]]
 
         >>> states = dict(a=np.array([[1, 2], [4, 5]]), b=np.array([[3, 6], [7, 8]]))
-        >>> actions = np.array([-1, -2])
+        >>> actions = np.array([[-1, -2], [-3, -4]])
         >>> sa = make_state_action_pairs(states, actions)
         >>> sa["a"].tolist()
         [[1, 2], [1, 2], [4, 5], [4, 5]]
         >>> sa["b"].tolist()
         [[3, 6], [3, 6], [7, 8], [7, 8]]
         >>> sa["actions"].tolist()
-        [[-1], [-2], [-1], [-2]]
+        [[-1, -2], [-1, -2], [-3, -4], [-3, -4]]
 
     """
     n_act = len(action_values)
+
     if isinstance(states, np.ndarray):
-        # Input states single numpy array.
-        actions = np.tile(action_values, len(states))[:, None]
+        # Input states are a single numpy array.
+        actions = np.repeat(action_values, len(states), axis=0) 
         states = np.repeat(states, n_act, axis=0)
         states = (states, actions)
     else:  # if isinstance(states, dict)
@@ -92,7 +121,9 @@ def make_state_action_pairs(
         n_states = len(next(iter(states.values())))
         states = {k: np.repeat(v, n_act, axis=0) for k, v in states.items()}
         assert "actions" not in states
-        states["actions"] = np.tile(action_values, n_states)[:, None]
+        states["actions"] = np.repeat(states, n_act, axis=0)
+
+    LOG.debug("STATE_ACTION_PAIRS", states)
     return states
 
 
@@ -254,6 +285,7 @@ class PickyBatch(Sequence):
         return sa, t
 
 
+
 class NFQs(Controller):
     """Neural Fitted Q-Iteration with (State, Action) input and a single Q output.
 
@@ -308,9 +340,26 @@ class NFQs(Controller):
         self._optimizer = optimizer
         self._model = model
         self.control_pairs = control_pairs
-        if action_values is None:
-            action_values = tuple(self.action_type.legal_values[0]) # TODO(SL,AH): should these go to the config? Because, presently, they won't. 
-        self._action_values = np.asarray(action_values, dtype=float) # presently, this is not using the setter by intention, to not alter the config values
+
+        LOG.debug("ACTION VALUES HANDED TO INIT", action_values)
+
+        if action_values is not None:
+            action_values = np.asarray(action_values, dtype=float)
+
+            if len(action_values.shape) == 1:
+                action_values = action_values[..., None] # we make every potential action a vector, even if it may be 1-dimensional. This is to unify and ease further processing between 1-dimensional and multi-dimensional actions, and to, nevertheless, accept whatever the user gives as argument.
+
+        else:
+            if len(self.action_channels) == 1:
+                action_values = self.action_type.legal_values
+            else:
+                action_values = generate_multi_dimensional_action_combinations(self.action_type.legal_values)
+        
+        self._action_values = np.asarray(action_values, dtype=float)
+
+        LOG.info("USED ACTION VALUES", self._action_values)
+        print("USED ACTION VALUES", self._action_values)
+        print("USED ACTION VALUES SHAPE", self._action_values.shape)
 
         self.epsilon = 0.0
         self._memory = ObservationStack((len(self.state_channels),), lookback=lookback)
@@ -320,7 +369,7 @@ class NFQs(Controller):
         # As the action values are directly fed into the network, those as well
         # need to be normalized.
         action_normalizer = StackNormalizer("minmax")
-        action_normalizer.fit(self._action_values[..., None])
+        action_normalizer.fit(self._action_values)
         self.action_normalizer = action_normalizer  # this will automatically repopulate the self.action_values_normalized
 
         self.action_repeat_max = num_repeat
@@ -329,7 +378,7 @@ class NFQs(Controller):
             Tuple[np.ndarray, Dict[str, np.ndarray]]
         ] = None
 
-        assert len(self.action_channels) == 1, "Only supports single actions."
+        # assert len(self.action_channels) == 1, "Only supports single actions."
 
         # Prepopulate `self.input_channels` and warmup model inference.
         try:
@@ -338,6 +387,7 @@ class NFQs(Controller):
             self._model(inputs)
         except Exception:
             LOG.warning("Model warmup failed, might still work as expected tho.")
+            print("Model warmup failed, might still work as expected tho.")
             pass
 
     def notify_episode_starts(self) -> None:
@@ -347,6 +397,8 @@ class NFQs(Controller):
     def get_action(self, state: State) -> Action:
         observation = state.as_array(*self.state_channels)
         stack = self._memory.append(observation).stack
+
+
         action, meta = self.get_actions(stack[None, ...])
         assert action.shape[0] == 1
         action = action.ravel()
@@ -354,7 +406,7 @@ class NFQs(Controller):
         # Splitting the meta data vectors into the individual action channels.
         individual_meta = dict()
         for key, values in meta.items():
-            for channel, value in zip(self.action_channels, values):
+            for channel, value in zip(self.action_channels, values[0]):
                 individual_meta[f"{channel}_{key}"] = value.item()
 
         mapping = dict(zip(self.action_channels, action))
@@ -372,12 +424,14 @@ class NFQs(Controller):
             stack: ``(N, CHANNELS, LOOKBACK)`` shaped stacks of observations.
         """
         if random.random() < self.epsilon or self.action_repeat > 0:
+            print("RANDOM ACTION")
             if self.action_repeat == 0:
                 action_indices = np.random.randint(
                     low=0, high=len(self.action_values), size=(stacks.shape[0], 1)
-                )
-                actions = self.action_values[action_indices]  # shape (N, 1)
-                meta = dict(index=action_indices, nodoe=actions)
+                ).ravel()   # TODO (AH/SL): not 100% sure why this is needed after switch to multi-dimensional actions.
+                actions = self.action_values[action_indices]  # shape (N, ACT_DIM)
+                meta = dict(nodoe=actions)
+                # meta = dict(index=action_indices, nodoe=actions) # TODO: if indices are needed, to add them back in. Went away because of the way the multi-dimensional actions are implemented.
                 # Randomly alter how long actions are held
                 self.action_repeat = self.action_repeat_max
                 if self.action_repeat_max > 1:
@@ -387,15 +441,23 @@ class NFQs(Controller):
                 actions, meta = cast(Tuple, self._prev_raw_act_and_meta)
                 self.action_repeat -= 1
         else:
+            print("GREEDY ACTION")
             stacks = self.preprocess_observations(stacks)
             stacks = make_state_action_pairs(stacks, self.action_values_normalized)
+
+            print("STACKS", stacks)
+
             with CM["get-actions-predict"]:
                 q_values = self._model(stacks).numpy()
             action_indices = argmin_q(q_values, len(self.action_values))
             action_indices = action_indices.astype(np.int32).ravel()
-            actions = self.action_values[action_indices, None]  # shape (N, 1)
-            meta = dict(index=action_indices, nodoe=actions)
+            actions = self.action_values[action_indices]  # shape (N, ACT_DIM)
+            meta = dict(nodoe=actions)
+            #  meta = dict(index=action_indices, nodoe=actions)  # TODO: if indices are needed, to add them back in. Went away because of the way the multi-dimensional actions are implemented.
             self.action_repeat = 0
+
+            print("ACTION", actions)
+            print("META", meta)
         if self.idoe:
             actions = self.doe_transform(actions)
         return actions, meta
@@ -408,9 +470,11 @@ class NFQs(Controller):
     @action_normalizer.setter
     def action_normalizer(self, action_normalizer: StackNormalizer):
         self._action_normalizer = action_normalizer
+        action_values = self.action_values
         self.action_values_normalized = self.action_normalizer.transform(
-            self.action_values[..., None]
-        ).flatten()
+            action_values
+        )
+        print("ACTION VALUES NORMALIZED", self.action_values_normalized)
 
     @property
     def action_values(self):

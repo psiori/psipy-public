@@ -42,17 +42,22 @@ ACTION_CHANNELS = [
 
 SART_FOLDER = "sart-wumpus-train"  # Define where we want to save our SART files
 
-def make_model(n_inputs, lookback):
+def make_model(n_inputs, n_action_dims, lookback):
     inp = tfkl.Input((n_inputs, lookback), name="states")
-    act = tfkl.Input((1,), name="actions")
+    act = tfkl.Input(n_action_dims, name="actions")  # Changed from (1,) to (n_action_dims,)
     net = tfkl.Flatten()(inp)
     net = tfkl.concatenate([act, net])
+    print("ACT SHAPE", act.shape)
+    print("INP SHAPE", inp.shape)
+    print("NET INPUT SHAPE", net.shape)
     # net = tfkl.Dense(n_inputs * lookback * 20, activation="relu")(net) # add this layer if you remove velocities from the state
     net = tfkl.Dense(256, activation="relu")(net)
     net = tfkl.Dense(256, activation="relu")(net)
     net = tfkl.Dense(100, activation="tanh")(net)
     net = tfkl.Dense(1, activation="sigmoid")(net)
-    return tf.keras.Model([inp, act], net)
+    model = tf.keras.Model([inp, act], net)
+    model.summary()
+    return model
 
 
 #class RandomControl(Controller):
@@ -83,20 +88,18 @@ random_control = DiscreteRandomActionController(
 
 
 
-# Make the NFQ model
-model = make_model(len(STATE_CHANNELS), STACKING)
+# Make the NFQ model - now with correct action dimensions
+model = make_model(len(STATE_CHANNELS), len(ACTION_CHANNELS), STACKING)
 
-loop = Loop(Plant, random_control, f"Wumpus", SART_FOLDER, render=RENDER)
+#loop = Loop(Plant, random_control, f"Wumpus", SART_FOLDER, render=RENDER)
+#loop.run(episodes=NUM_EPISODES, max_episode_steps=NUM_EPISODE_STEPS)
 
-loop.run(episodes=NUM_EPISODES, max_episode_steps=NUM_EPISODE_STEPS)
 
-
-"""
 nfqs = NFQs(
     model=model,
     state_channels=STATE_CHANNELS,
     action=ActionType,
-    action_values=ActionType.legal_values[0],
+#    action_values=ActionType.legal_values,
     optimizer=tf.keras.optimizers.Adam(),
     lookback=STACKING,
     num_repeat=1
@@ -124,7 +127,7 @@ try:
 except FileNotFoundError:
     print(f"No episodes found in {SART_FOLDER}. I will start from scratch.")
 
-loop = Loop(Plant, nfqs, f"CartPole", SART_FOLDER, render=RENDER)
+loop = Loop(Plant, nfqs, f"Wumpus", SART_FOLDER, render=RENDER)
 
 nfqs.epsilon = EPSILON
 
@@ -156,7 +159,6 @@ while episode < NUM_EPISODES:
     try:
         nfqs.fit(
             batch,
-            costfunc=cost_function,
             iterations=4,
             epochs=8,
             minibatch_size=2048,
@@ -168,4 +170,4 @@ while episode < NUM_EPISODES:
         pass
 
     episode += 1
-"""
+
