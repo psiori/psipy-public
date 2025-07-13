@@ -121,7 +121,7 @@ def make_state_action_pairs(
         n_states = len(next(iter(states.values())))
         states = {k: np.repeat(v, n_act, axis=0) for k, v in states.items()}
         assert "actions" not in states
-        states["actions"] = np.repeat(states, n_act, axis=0)
+        states["actions"] = np.repeat(action_values, n_states, axis=0)
 
     LOG.debug("STATE_ACTION_PAIRS", states)
     return states
