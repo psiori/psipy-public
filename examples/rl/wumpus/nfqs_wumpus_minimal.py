@@ -25,7 +25,7 @@ from psipy.rl.visualization.plotting_callback import PlottingCallback
 RENDER = True           # whether or not to render the plant during training
 
 NUM_EPISODES = 200
-NUM_EPISODE_STEPS = 20
+NUM_EPISODE_STEPS = 30  # Increased steps since we have pits to avoid
 GAMMA = 0.98
 STACKING = 1            # history length. 1 = no stacking, just the current state.
 EPSILON = 0.20          # epsilon-greedy exploration
@@ -79,13 +79,7 @@ def make_model(n_inputs, n_action_dims, lookback):
 ActionType = WumpusAction
 StateType = WumpusState
 
-Plant = WumpusPlant()
-random_control = DiscreteRandomActionController(
-    state_channels=WumpusState.channels(),
-    action=WumpusAction,
-    num_repeat=0
-)
-
+Plant = WumpusPlant(pit_positions=())
 
 
 # Make the NFQ model - now with correct action dimensions
@@ -102,7 +96,7 @@ nfqs = NFQs(
 #    action_values=ActionType.legal_values,
     optimizer=tf.keras.optimizers.Adam(),
     lookback=STACKING,
-    num_repeat=1
+    num_repeat=1,
 )
 
 callback = PlottingCallback(
