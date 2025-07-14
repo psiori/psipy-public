@@ -113,7 +113,7 @@ def make_state_action_pairs(
 
     if isinstance(states, np.ndarray):
         # Input states are a single numpy array.
-        actions = np.repeat(action_values, len(states), axis=0) 
+        actions = np.tile(action_values, (len(states), 1)) 
         states = np.repeat(states, n_act, axis=0)
         states = (states, actions)
     else:  # if isinstance(states, dict)
@@ -121,7 +121,7 @@ def make_state_action_pairs(
         n_states = len(next(iter(states.values())))
         states = {k: np.repeat(v, n_act, axis=0) for k, v in states.items()}
         assert "actions" not in states
-        states["actions"] = np.repeat(action_values, n_states, axis=0)
+        states["actions"] = np.tile(action_values, (n_states, 1))
 
     LOG.debug("STATE_ACTION_PAIRS", states)
     return states
@@ -136,6 +136,7 @@ def argmin_q(predictions: np.ndarray, n_actions):
 def sticky_state_action_pairs(next_states, action_values):
     """Create state action pairs cached to the GPU."""
     next_states = make_state_action_pairs(next_states, action_values)
+
     if isinstance(next_states, dict):
         with tf.device(tf.test.gpu_device_name() or "CPU:0"):
             return {key: tf.constant(val) for key, val in next_states.items()}
