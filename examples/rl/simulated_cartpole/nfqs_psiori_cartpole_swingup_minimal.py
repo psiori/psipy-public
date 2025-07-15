@@ -26,7 +26,7 @@ from psipy.rl.visualization.plotting_callback import PlottingCallback
 # Parameters
 RENDER = True           # whether or not to render the plant during training
 
-NUM_EPISODES = 200
+NUM_EPISODES = 400
 NUM_EPISODE_STEPS = 400
 GAMMA = 0.98
 STACKING = 1            # history length. 1 = no stacking, just the current state.
@@ -61,7 +61,9 @@ def make_model(n_inputs, lookback):
     net = tfkl.Dense(256, activation="relu")(net)
     net = tfkl.Dense(100, activation="tanh")(net)
     net = tfkl.Dense(1, activation="sigmoid")(net)
-    return tf.keras.Model([inp, act], net)
+    model = tf.keras.Model([inp, act], net)
+    model.summary()
+    return model
 
 def make_cost_function(x_threshold: float = 3.6,
                        position_idx=None,

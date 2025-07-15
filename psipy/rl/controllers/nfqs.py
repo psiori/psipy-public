@@ -75,7 +75,8 @@ def generate_multi_dimensional_action_combinations(legal_values: Tuple[Tuple, ..
                [ 1,  1]])
     """
     combinations = list(itertools.product(*legal_values))
-    return np.array(combinations, dtype=float)
+    index_combinations = list(itertools.product(*[range(len(dim)) for dim in legal_values]))
+    return (np.array(combinations, dtype=float), np.array(index_combinations, dtype=int))
 
 
 def make_state_action_pairs(
@@ -314,6 +315,7 @@ class NFQs(Controller):
         self,
         model: tf.keras.Model,
         action_values: Optional[Tuple[Union[int, float], ...]] = None,
+        action_indices: Optional[Tuple[int, ...]] = None,
         lookback: int = 1,
         control_pairs: Optional[Tuple[Tuple[str, str], ...]] = None,
         num_repeat: int = 0,
@@ -344,22 +346,36 @@ class NFQs(Controller):
 
         LOG.debug("ACTION VALUES HANDED TO INIT", action_values)
 
+        if action_indices is not None:
+            self._action_indices = np.asarray(action_indices, dtype=int)
+        else:
+            self._action_indices = None
+
         if action_values is not None:
             action_values = np.asarray(action_values, dtype=float)
 
             if len(action_values.shape) == 1:
                 action_values = action_values[..., None] # we make every potential action a vector, even if it may be 1-dimensional. This is to unify and ease further processing between 1-dimensional and multi-dimensional actions, and to, nevertheless, accept whatever the user gives as argument.
+                if self._action_indices is None:
+                    self._action_indices = np.arange(len(action_values))[..., None] # legacy method to allow providing 1-d action values via the constructor. Indices for n-d actions provided via the constructor are not generated automatically, as the order is unclear.
 
+            elif action_indices is None:
+                LOG.warning("Action values provided via the constructor, but action indices are not. Ignoring action indices, data will not be usable by DQN - like methods.")
+            
         else:
             if len(self.action_channels) == 1:
                 action_values = self.action_type.legal_values
+                self._action_indices = np.arange(len(action_values))
             else:
-                action_values = generate_multi_dimensional_action_combinations(self.action_type.legal_values)
-        
+                action_values, action_indices = generate_multi_dimensional_action_combinations(self.action_type.legal_values)
+                self._action_indices = action_indices
+
         self._action_values = np.asarray(action_values, dtype=float)
 
         LOG.info("USED ACTION VALUES", self._action_values)
+        LOG.info("USED ACTION INDICES", self._action_indices)
         print("USED ACTION VALUES", self._action_values)
+        print("USED ACTION INDICES", self._action_indices)
         print("USED ACTION VALUES SHAPE", self._action_values.shape)
 
         self.epsilon = 0.0
@@ -431,8 +447,10 @@ class NFQs(Controller):
                     low=0, high=len(self.action_values), size=(stacks.shape[0], 1)
                 ).ravel()   # TODO (AH/SL): not 100% sure why this is needed after switch to multi-dimensional actions.
                 actions = self.action_values[action_indices]  # shape (N, ACT_DIM)
-                meta = dict(nodoe=actions)
-                # meta = dict(index=action_indices, nodoe=actions) # TODO: if indices are needed, to add them back in. Went away because of the way the multi-dimensional actions are implemented.
+                if self._action_indices is not None:
+                    meta = dict(index=self._action_indices[action_indices], nodoe=actions)
+                else:
+                    meta = dict(nodoe=actions)
                 # Randomly alter how long actions are held
                 self.action_repeat = self.action_repeat_max
                 if self.action_repeat_max > 1:
@@ -452,9 +470,11 @@ class NFQs(Controller):
                 q_values = self._model(stacks).numpy()
             action_indices = argmin_q(q_values, len(self.action_values))
             action_indices = action_indices.astype(np.int32).ravel()
-            actions = self.action_values[action_indices]  # shape (N, ACT_DIM)
-            meta = dict(nodoe=actions)
-            #  meta = dict(index=action_indices, nodoe=actions)  # TODO: if indices are needed, to add them back in. Went away because of the way the multi-dimensional actions are implemented.
+            actions = self.action_values[action_indices]  # shape (N, ACT_DIM)  
+            if self._action_indices is not None:
+                meta = dict(index=self._action_indices[action_indices], nodoe=actions)
+            else:
+                meta = dict(nodoe=actions)
             self.action_repeat = 0
 
             print("ACTION", actions)
