@@ -62,7 +62,7 @@ class AutocraneTrolleyAction(AutocraneAction):
         "trolley_target_vel",
     )
     legal_values = (
-        (-0.268, 0.268),    
+        (-0.268, 0.0, 0.268),    
     )
 
 class AutocraneTrolleyHoistAction(AutocraneAction):
