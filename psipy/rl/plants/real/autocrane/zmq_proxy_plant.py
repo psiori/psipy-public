@@ -36,10 +36,15 @@ class AutocraneState(State):
         "grapple_sway_trolley",
         "grapple_sway_gantry",
         "grapple_loaded",
+        "gantry_limit_dist_left",
+        "gantry_limit_dist_right",
         "trolley_limit_dist_left",
         "trolley_limit_dist_right",
         "hoist_limit_dist_up",
         "hoist_limit_dist_down",
+        "gantry_set_point_delta",
+        "trolley_set_point_delta",
+        "hoist_set_point_delta",
         "gantry_target_vel_ACT",
         "hoist_target_vel_ACT",
         "trolley_target_vel_ACT",
@@ -69,9 +74,9 @@ class AutocraneDiscreteAction(AutocraneAction):
     )
     legal_values = (  # speed is in meters per second
         (
-            (0),
-            (-0.268, 0, 0.268),
-            (0),
+            (0), # max vel is 1.00 m/s
+            (-0.268, -0.054, 0, 0.054, 0.268),
+            (-0.095, 0, 0.095),
         ),
     )
 
@@ -115,6 +120,7 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
                  state_sub_address: str = "tcp://192.168.50.25:7555", 
                  action_pub_address: str = "tcp://192.168.50.25:7556",
                  randomize_set_points: bool = True,
+                 hoist_active: bool = False,
                  action_type: AutocraneAction = None, 
                  **kwargs):
         """
@@ -128,6 +134,8 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
 
         if action_type is not None:
             self.action_type = action_type
+
+        self.hoist_active = hoist_active
 
         super().__init__(**kwargs)
         self.context = zmq.Context()
@@ -218,12 +226,15 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         state = {}
 
         # update limits
+
+        self.gantry_min = float(message["gantry_pos_min"])
+        self.gantry_max = float(message["gantry_pos_max"]) 
         
         self.trolley_min = float(message["trolley_pos_min"]) + 0.20  # 20 cm buffer
         self.trolley_max = float(message["trolley_pos_max"]) - 0.20  # 20 cm buffer
 
-        self.hoist_min = float(message["hoist_pos_min"]) + 0.50  # 50 cm buffer
-        self.hoist_max = float(message["hoist_pos_max"]) - 0.50  # 50 cm buffer
+        self.hoist_min = float(message["hoist_pos_min"]) + 0.25  # 25 cm buffer
+        self.hoist_max = float(message["hoist_pos_max"]) - 0.25  # 25 cm buffer
 
         state["cycle_number"] = message["cycle_number"]
         state["cycle_started_at"] = message["cycle_started_at"]
@@ -240,15 +251,20 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         state["grapple_sway_trolley"] = float(message["grapple_sway_trolley"])
         state["grapple_sway_gantry"] = float(message["grapple_sway_gantry"])
         state["grapple_loaded"] = bool(message["grapple_loaded"])
+        state["gantry_limit_dist_left"] = 0.0
+        state["gantry_limit_dist_right"] = 0.0
         state["trolley_limit_dist_left"] = 0.0
         state["trolley_limit_dist_right"] = 0.0
+        state["hoist_limit_dist_up"] = 0.0
+        state["hoist_limit_dist_down"] = 0.0
+        state["gantry_set_point_delta"] = 0.0
+        state["trolley_set_point_delta"] = 0.0
+        state["hoist_set_point_delta"] = 0.0
         state["gantry_target_vel_ACT"] = 0.0
         state["hoist_target_vel_ACT"] = 0.0
         state["trolley_target_vel_ACT"] = 0.0
         state["grapple_target_vel_ACT"] = 0.0
         state["weight"] = float(message["weight"])
-        state["hoist_limit_dist_up"] = 0.0
-        state["hoist_limit_dist_down"] = 0.0
 
         return state
 
@@ -264,7 +280,7 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
             dict["gantry_target_vel"] = action["gantry_target_vel"]
         if "trolley_target_vel" in action.channels:
             dict["trolley_target_vel"] = action["trolley_target_vel"]
-        if "hoist_target_vel" in action.channels:
+        if self.hoist_active and "hoist_target_vel" in action.channels:
             dict["hoist_target_vel"] = action["hoist_target_vel"]
         
         return dict
@@ -280,28 +296,32 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         """
         self._last_cycle_number = state_dict["cycle_number"]
 
-        raw_gantry_pos = state_dict["gantry_pos"]
-        raw_trolley_pos = state_dict["trolley_pos"]
-        raw_hoist_pos = state_dict["hoist_pos"]
+        gantry_pos = state_dict["gantry_pos"]
+        trolley_pos = state_dict["trolley_pos"]
+        hoist_pos = state_dict["hoist_pos"]
 
         # move absolute position to a relative one in respect to the
         # present set point
 
         if self._gantry_set_point is not None:
-            state_dict["gantry_pos"] = state_dict["gantry_pos"] - self._gantry_set_point
+            state_dict["gantry_set_point_delta"] = gantry_pos - self._gantry_set_point
 
         if self._trolley_set_point is not None:
-            state_dict["trolley_pos"] = state_dict["trolley_pos"] - self._trolley_set_point
+            state_dict["trolley_set_point_delta"] = trolley_pos - self._trolley_set_point
 
-        # if self._hoist_set_point is not None:
-        #    state_dict["hoist_pos"] = state_dict["hoist_pos"] # - self._hoist_set_point  TODO: NEED TO CHANGE THIS, IDEAS WAS STUPID (NEED PENDULUM LENGTHE; SAFETY CHECKS)
+        if self._hoist_set_point is not None:
+            state_dict["hoist_set_point_delta"] = hoist_pos - self._hoist_set_point
 
         # make limits relative
-        state_dict["trolley_limit_dist_left"] = self.trolley_min - raw_trolley_pos
-        state_dict["trolley_limit_dist_right"] = self.trolley_max - raw_trolley_pos
 
-        state_dict["hoist_limit_dist_up"] = self.hoist_max - raw_hoist_pos
-        state_dict["hoist_limit_dist_down"] = self.hoist_min - raw_hoist_pos
+        state_dict["gantry_limit_dist_left"] = self.gantry_min - gantry_pos
+        state_dict["gantry_limit_dist_right"] = self.gantry_max - gantry_pos
+
+        state_dict["trolley_limit_dist_left"] = self.trolley_min - trolley_pos
+        state_dict["trolley_limit_dist_right"] = self.trolley_max - trolley_pos
+
+        state_dict["hoist_limit_dist_up"] = self.hoist_max - hoist_pos
+        state_dict["hoist_limit_dist_down"] = self.hoist_min - hoist_pos
 
         # copy current actions to state representation
         state_dict["trolley_target_vel_ACT"] = action_dict["trolley_target_vel"] if "trolley_target_vel" in action_dict else 0.0
@@ -314,12 +334,17 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         # Create the new state
         new_state = AutocraneState(state_dict)
 
-        if raw_trolley_pos <= self.trolley_min or raw_trolley_pos >= self.trolley_max:
+        # TODO: GANTRY LIMITS NOT YES IMPLEMNETED (FOR RADIAL CRANE)
+        #if gantry_pos <= self.gantry_min or gantry_pos >= self.gantry_max:
+        #    print("ZMQProxy: Gantry limit reached. Terminal state. Gantry position:", gantry_pos, "limits:", self.gantry_min, "-", self.gantry_max)
+        #    new_state.terminal = True
+
+        if trolley_pos <= self.trolley_min or trolley_pos >= self.trolley_max:
             print("ZMQProxy: Trolley limit reached. Terminal state.")
             new_state.terminal = True        
 
-        if raw_hoist_pos <= self.hoist_min or raw_hoist_pos >= self.hoist_max:
-            print("ZMQProxy: Hoist limit reached. Terminal state. Hoist position:", raw_hoist_pos, "limits:", self.hoist_min, "-", self.hoist_max)
+        if hoist_pos <= self.hoist_min or hoist_pos >= self.hoist_max:
+            print("ZMQProxy: Hoist limit reached. Terminal state. Hoist position:", hoist_pos, "limits:", self.hoist_min, "-", self.hoist_max)
             new_state.terminal = True
 
         return new_state
@@ -358,7 +383,14 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
 
         new_state = self._process_and_update_from(state_dict, action_dict)
 
-        print("L:\t", new_state["trolley_limit_dist_left"], "\tP:", new_state["trolley_pos"], "\tR:", new_state["trolley_limit_dist_right"], "\tA:", action_dict["trolley_target_vel"])
+        print("L:\t", new_state["trolley_limit_dist_left"], 
+              "\tT:\t", new_state["trolley_set_point_delta"], 
+              "\tR:\t", new_state["trolley_limit_dist_right"],
+              "\tAT:\t", action_dict["trolley_target_vel"],
+              "\t\tU:\t", new_state["hoist_limit_dist_up"],
+              "\tH:\t", new_state["hoist_set_point_delta"],
+              "\tD:\t", new_state["hoist_limit_dist_down"],
+              "\tAH:\t", action_dict["hoist_target_vel"])
 
         self._current_state = new_state
         return new_state
@@ -378,7 +410,11 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
             self.set_random_set_point()
         
         # Create the initial state
-        initial_state = self._process_and_update_from(state_dict, { "trolley_target_vel": 0.0 })
+        initial_state = self._process_and_update_from(state_dict, { 
+            "trolley_target_vel": 0.0,
+            "hoist_target_vel": 0.0,
+            "gantry_target_vel": 0.0,
+        })
 
         self._current_state = initial_state
         return initial_state
@@ -405,32 +441,49 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         """
         Moves the trolley away from the limits if it is too close to them. Distance should be at least 0.50 meters.
         """
+
         target_trolley_vel = 0.0
+        target_hoist_vel = 0.0
 
         while True:
             message = self._receive_message()
 
-            raw_trolley_pos = float(message["trolley_pos"])
+            trolley_pos = float(message["trolley_pos"])
+            hoist_pos = float(message["hoist_pos"])
 
             state_dict = self._state_dict_from_autocrane_message(message)
             state = self._process_and_update_from(state_dict, {
-                "trolley_target_vel": target_trolley_vel
+                "trolley_target_vel": target_trolley_vel,
+                "hoist_target_vel": target_hoist_vel,
             })
             cycle_number = state_dict["cycle_number"]
 
-            print (f"IN MOVE AWAY FROM LIMITS: Cycle { cycle_number } Trolley position: {message['trolley_pos']}, limits: {self.trolley_min} - {self.trolley_max}")
+            print (f"IN MOVE AWAY FROM LIMITS: Cycle { cycle_number } Trolley position: {message['trolley_pos']}, limits: {self.trolley_min} - {self.trolley_max}, {self.hoist_min}-{self.hoist_max}")
 
-            if raw_trolley_pos > self.trolley_min + 1.50 and raw_trolley_pos < self.trolley_max - 1.50:
-                break   # done, good enough.
+            trolley_ok = trolley_pos > self.trolley_min + 1.50 and trolley_pos < self.trolley_max - 1.50
 
-            center = (self.trolley_min + self.trolley_max) / 2.0
+            hoist_ok = not self.hoist_active or (self.hoist_active and hoist_pos > self.hoist_min + 0.20 and hoist_pos < self.hoist_max - 0.20)
 
-            target_trolley_vel = 0.268 if raw_trolley_pos <= center else -0.268
+            if trolley_ok and hoist_ok:
+                print("Trolley and hoist are ok, moving away from limits")
+                break
+
+            if not trolley_ok:
+                center = (self.trolley_min + self.trolley_max) / 2.0
+                target_trolley_vel = 0.268 if trolley_pos <= center else -0.268
+            else:
+                target_trolley_vel = 0.0
+
+            if not hoist_ok:
+                center = (self.hoist_min + self.hoist_max) / 2.0
+                target_hoist_vel = 0.095 if hoist_pos <= center else -0.095
+            else:
+                target_hoist_vel = 0.0
 
             self.action_socket.send_json({
                 "gantry_target_vel": 0.0,
                 "trolley_target_vel": target_trolley_vel,
-                "hoist_target_vel": 0.0,
+                "hoist_target_vel": target_hoist_vel,
                 "cycle_number": cycle_number,
             })
 
