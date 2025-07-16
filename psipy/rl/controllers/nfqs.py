@@ -441,7 +441,6 @@ class NFQs(Controller):
             stack: ``(N, CHANNELS, LOOKBACK)`` shaped stacks of observations.
         """
         if random.random() < self.epsilon or self.action_repeat > 0:
-            print("RANDOM ACTION")
             if self.action_repeat == 0:
                 action_indices = np.random.randint(
                     low=0, high=len(self.action_values), size=(stacks.shape[0], 1)
@@ -460,11 +459,8 @@ class NFQs(Controller):
                 actions, meta = cast(Tuple, self._prev_raw_act_and_meta)
                 self.action_repeat -= 1
         else:
-            print("GREEDY ACTION")
             stacks = self.preprocess_observations(stacks)
             stacks = make_state_action_pairs(stacks, self.action_values_normalized)
-
-            print("STACKS", stacks)
 
             with CM["get-actions-predict"]:
                 q_values = self._model(stacks).numpy()
@@ -476,9 +472,6 @@ class NFQs(Controller):
             else:
                 meta = dict(nodoe=actions)
             self.action_repeat = 0
-
-            print("ACTION", actions)
-            print("META", meta)
         if self.idoe:
             actions = self.doe_transform(actions)
         return actions, meta
@@ -495,7 +488,6 @@ class NFQs(Controller):
         self.action_values_normalized = self.action_normalizer.transform(
             action_values
         )
-        print("ACTION VALUES NORMALIZED", self.action_values_normalized)
 
     @property
     def action_values(self):
