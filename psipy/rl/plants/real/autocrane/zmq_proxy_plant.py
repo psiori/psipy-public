@@ -65,6 +65,16 @@ class AutocraneTrolleyAction(AutocraneAction):
         (-0.268, 0.268),    
     )
 
+class AutocraneTrolleyHoistAction(AutocraneAction):
+    dtype = "continuous"
+    channels = (
+        "trolley_target_vel",
+        "hoist_taget_vel",
+    )
+    legal_values = (
+        (-0.268, 0.0, 0.268),  
+        (-0.095, 0.0, 0.095),
+    )
 class AutocraneDiscreteAction(AutocraneAction):
     dtype = "discrete"
     channels = (
@@ -73,7 +83,7 @@ class AutocraneDiscreteAction(AutocraneAction):
         "hoist_target_vel",
     )
     legal_values = (  # speed is in meters per second
-            (0.0,), # max vel is 1.00 m/s
+            (-1.0, 0.0, 1.0), # max vel is 1.00 m/s
             (-0.268, 0.0, 0.268),
             (-0.095, 0.0, 0.095),
     )
