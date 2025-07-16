@@ -57,7 +57,7 @@ class AutocraneAction(Action):
 
 
 class AutocraneTrolleyAction(AutocraneAction):
-    dtype = "continuous"
+    dtype = "discrete"
     channels = (
         "trolley_target_vel",
     )
@@ -66,7 +66,7 @@ class AutocraneTrolleyAction(AutocraneAction):
     )
 
 class AutocraneTrolleyHoistAction(AutocraneAction):
-    dtype = "continuous"
+    dtype = "discrete"
     channels = (
         "trolley_target_vel",
         "hoist_taget_vel",
