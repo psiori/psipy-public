@@ -293,8 +293,8 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         if self._trolley_set_point is not None:
             state_dict["trolley_pos"] = state_dict["trolley_pos"] - self._trolley_set_point
 
-        if self._hoist_set_point is not None:
-            state_dict["hoist_pos"] = state_dict["hoist_pos"] - self._hoist_set_point
+        # if self._hoist_set_point is not None:
+        #    state_dict["hoist_pos"] = state_dict["hoist_pos"] # - self._hoist_set_point  TODO: NEED TO CHANGE THIS, IDEAS WAS STUPID (NEED PENDULUM LENGTHE; SAFETY CHECKS)
 
         # make limits relative
         state_dict["trolley_limit_dist_left"] = self.trolley_min - raw_trolley_pos
