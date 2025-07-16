@@ -319,7 +319,7 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
             new_state.terminal = True        
 
         if raw_hoist_pos <= self.hoist_min or raw_hoist_pos >= self.hoist_max:
-            print("ZMQProxy: Hoist limit reached. Terminal state.")
+            print("ZMQProxy: Hoist limit reached. Terminal state. Hoist position:", raw_hoist_pos, "limits:", self.hoist_min, "-", self.hoist_max)
             new_state.terminal = True
 
         return new_state
