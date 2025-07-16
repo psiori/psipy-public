@@ -47,7 +47,20 @@ class AutocraneState(State):
         "weight",
     )
 
-class AutocraneDiscreteAction(Action):
+class AutocraneAction(Action):
+    dtype = "discrete"
+
+
+class AutocraneTrolleyAction(AutocraneAction):
+    dtype = "continuous"
+    channels = (
+        "trolley_target_vel",
+    )
+    legal_values = (
+        (-0.268, 0.268),    
+    )
+
+class AutocraneDiscreteAction(AutocraneAction):
     dtype = "discrete"
     channels = (
         "gantry_target_vel",
@@ -56,17 +69,13 @@ class AutocraneDiscreteAction(Action):
     )
     legal_values = (  # speed is in meters per second
         (
-            (0, -0.268, 0),   # max allowed speed
-            #-0.1,  
-            #-0.0287,  # close to minimal non-zero speed which would actually cause the very slowest possible movement, about 1/10 of max allowed speed
-            (0, 0, 0),
-            #0.0287,
-            #0.1,
-            (0, 0.268, 0),
+            (0),
+            (-0.268, 0, 0.268),
+            (0),
         ),
     )
 
-class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneDiscreteAction]):
+class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
     """
     A Plant class that interfaces with an Autocrane system via ZMQ.
 
@@ -100,12 +109,14 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneDiscreteAction]):
     """
     
     state_type = AutocraneState
-    action_type = AutocraneDiscreteAction
+    action_type = AutocraneAction
 
     def __init__(self, 
                  state_sub_address: str = "tcp://192.168.50.25:7555", 
                  action_pub_address: str = "tcp://192.168.50.25:7556",
-                 randomize_set_points: bool = True, **kwargs):
+                 randomize_set_points: bool = True,
+                 action_type: AutocraneAction = None, 
+                 **kwargs):
         """
         Initializes the AutocraneZMQProxyPlant.
 
@@ -114,6 +125,10 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneDiscreteAction]):
             action_pub_address (str): The address of the ZMQ publisher socket for sending actions.
             randomize_set_points (bool): Whether to randomize set points.
         """
+
+        if action_type is not None:
+            self.action_type = action_type
+
         super().__init__(**kwargs)
         self.context = zmq.Context()
         
@@ -237,13 +252,22 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneDiscreteAction]):
 
         return state
 
-    def _action_dict_from_action(self, action: AutocraneDiscreteAction, cycle_number: int) -> dict:
-        return {
-            "gantry_target_vel": action["gantry_target_vel"],
-            "trolley_target_vel": action["trolley_target_vel"],
-            "hoist_target_vel": action["hoist_target_vel"],
-            "cycle_number": cycle_number,
+    def _action_dict_from_action(self, action: AutocraneAction, cycle_number: int) -> dict:
+        dict = { 
+            "cycle_number": cycle_number, 
+            "gantry_target_vel": 0.0,
+            "trolley_target_vel": 0.0,
+            "hoist_target_vel": 0.0,
         }
+
+        if "gantry_target_vel" in action.channels:
+            dict["gantry_target_vel"] = action["gantry_target_vel"]
+        if "trolley_target_vel" in action.channels:
+            dict["trolley_target_vel"] = action["trolley_target_vel"]
+        if "hoist_target_vel" in action.channels:
+            dict["hoist_target_vel"] = action["hoist_target_vel"]
+        
+        return dict
     
     def _process_and_update_from(self, 
                                  state_dict,
@@ -318,7 +342,7 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneDiscreteAction]):
                 continue
         return latest_message
 
-    def _get_next_state(self, state: AutocraneState, action: AutocraneDiscreteAction) -> AutocraneState:
+    def _get_next_state(self, state: AutocraneState, action: AutocraneAction) -> AutocraneState:
         """
         Sends an action to the Autocrane system and receives the next state.
         """

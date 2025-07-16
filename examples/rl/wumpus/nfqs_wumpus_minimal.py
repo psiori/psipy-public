@@ -1,61 +1,55 @@
-# PSIORI Machine Learning Toolbox
-# ===========================================
-#
-# Copyright (C) PSIORI GmbH, Germany
-# Proprietary and confidential, all rights reserved.
 
-"""Example script that learns cartpole with NFQs."""
+
+"""Example script that tests multi dimensinonal actions of NFQs on a simple wumpus world."""
 
 import sys
 
 import tensorflow as tf
 from tensorflow.keras import layers as tfkl
 
-from typing import Callable
+from typing import Callable, Type
 import numpy as np
 
+from psipy.rl.core.controller import Controller, DiscreteRandomActionController
+from psipy.rl.core.plant import Plant, State, Action
 from psipy.rl.controllers.nfqs import NFQs
 from psipy.rl.io.batch import Batch
 from psipy.rl.loop import Loop
-from psipy.rl.plants.simulated.cartpole import (
-    CartPoleBangAction,
-    CartPoleState,
-    CartPole)
+from psipy.rl.plants.simulated.wumpus import (
+    WumpusAction,
+    WumpusState,
+    WumpusPlant)
 from psipy.rl.visualization.plotting_callback import PlottingCallback
 
 # Parameters
 RENDER = True           # whether or not to render the plant during training
 
-NUM_EPISODES = 400
-NUM_EPISODE_STEPS = 400
+NUM_EPISODES = 200
+NUM_EPISODE_STEPS = 30  # Increased steps since we have pits to avoid
 GAMMA = 0.98
 STACKING = 1            # history length. 1 = no stacking, just the current state.
-EPSILON = 0.05          # epsilon-greedy exploration
-
-DEFAULT_STEP_COST = 0.01
-TERMINAL_COST = 1.0     # this is the cost for leaving the track.
+EPSILON = 0.20          # epsilon-greedy exploration
 
 STATE_CHANNELS = [
-    "cart_position",
-    "cart_velocity",
-    # "pole_angle",     # use this instead of sine/cosine if you want to use the angle directly. Remeber to adapt the cost function...
-    "pole_sine",
-    "pole_cosine",
-    "pole_velocity",
-    # "move_ACT",       # use, if stacking > 1
+    "x",
+    "y",
 ]
+
 ACTION_CHANNELS = [
-    "move",
+    "move_x",
+    "move_y",
 ]
 
-SART_FOLDER = "sart-cartpole-train"  # Define where we want to save our SART files
-X_THRESHOLD = 3.6                    # (half) cart track length. Provide more space than balancing standard for swingup.
+SART_FOLDER = "sart-wumpus-train"  # Define where we want to save our SART files
 
-def make_model(n_inputs, lookback):
+def make_model(n_inputs, n_action_dims, lookback):
     inp = tfkl.Input((n_inputs, lookback), name="states")
-    act = tfkl.Input((1,), name="actions")
+    act = tfkl.Input(n_action_dims, name="actions")  # Changed from (1,) to (n_action_dims,)
     net = tfkl.Flatten()(inp)
     net = tfkl.concatenate([act, net])
+    print("ACT SHAPE", act.shape)
+    print("INP SHAPE", inp.shape)
+    print("NET INPUT SHAPE", net.shape)
     # net = tfkl.Dense(n_inputs * lookback * 20, activation="relu")(net) # add this layer if you remove velocities from the state
     net = tfkl.Dense(256, activation="relu")(net)
     net = tfkl.Dense(256, activation="relu")(net)
@@ -65,53 +59,44 @@ def make_model(n_inputs, lookback):
     model.summary()
     return model
 
-def make_cost_function(x_threshold: float = 3.6,
-                       position_idx=None,
-                       cosine_idx=None) -> Callable[[np.ndarray], np.ndarray]:
-    def cost_function(state: np.ndarray) -> np.ndarray:
 
-        position = state[:, position_idx]
-        cosine = state[:, cosine_idx]
+#class RandomControl(Controller):
+#    def __init__(self, action_type: Type[Action]):
+#        self.action_type = action_type
+#        self.action_channels = action_type.channels
+    
+#    def get_action(self, state: State) -> Action:
+#        return self.action_type(
+#        )
+    
+#    def notify_episode_starts(self) -> None:
+#        pass
+    
+#    def notify_episode_stops(self) -> None:
+#        pass
 
-        # ZERO COSTS in center of track with pole pointing upwards.
-        # Within the center region of the track, costs are SHAPED
-        # from DEFAULT_STEP_COST (in center, but pole pointing downwards),
-        # to 0.0 (in center, but pole pointing upwards) using the cosine
-        # of the pole angle.
-        costs = (1.0-(cosine+1.0)/2.0) * DEFAULT_STEP_COST
 
-        # DEFAULT COSTS for positions outside the center region of the track.
-        costs[abs(position) >= 0.2 * x_threshold] = DEFAULT_STEP_COST
+ActionType = WumpusAction
+StateType = WumpusState
 
-        # VERY HIGH TERMINAL COSTS for leaving the track.
-        costs[abs(position) >= x_threshold]       = TERMINAL_COST
+Plant = WumpusPlant(pit_positions=())
 
-        return costs
 
-    return cost_function
+# Make the NFQ model - now with correct action dimensions
+model = make_model(len(STATE_CHANNELS), len(ACTION_CHANNELS), STACKING)
 
-cost_function = make_cost_function(x_threshold=X_THRESHOLD,
-                                   position_idx=STATE_CHANNELS.index("cart_position"),
-                                   cosine_idx=STATE_CHANNELS.index("pole_cosine"))
+#loop = Loop(Plant, random_control, f"Wumpus", SART_FOLDER, render=RENDER)
+#loop.run(episodes=NUM_EPISODES, max_episode_steps=NUM_EPISODE_STEPS)
 
-ActionType = CartPoleBangAction
-StateType = CartPoleState
 
-Plant = CartPole(x_threshold=X_THRESHOLD,
-                 cost_function=CartPole.cost_func_wrapper(
-                                     cost_function,
-                                     STATE_CHANNELS))  
-
-# Make the NFQ model
-model = make_model(len(STATE_CHANNELS), STACKING)
 nfqs = NFQs(
     model=model,
     state_channels=STATE_CHANNELS,
     action=ActionType,
-    action_values=ActionType.legal_values[0],
+#    action_values=ActionType.legal_values,
     optimizer=tf.keras.optimizers.Adam(),
     lookback=STACKING,
-    num_repeat=1
+    num_repeat=1,
 )
 
 callback = PlottingCallback(
@@ -136,7 +121,7 @@ try:
 except FileNotFoundError:
     print(f"No episodes found in {SART_FOLDER}. I will start from scratch.")
 
-loop = Loop(Plant, nfqs, f"CartPole", SART_FOLDER, render=RENDER)
+loop = Loop(Plant, nfqs, f"Wumpus", SART_FOLDER, render=RENDER)
 
 nfqs.epsilon = EPSILON
 
@@ -168,7 +153,6 @@ while episode < NUM_EPISODES:
     try:
         nfqs.fit(
             batch,
-            costfunc=cost_function,
             iterations=4,
             epochs=8,
             minibatch_size=2048,
@@ -180,3 +164,4 @@ while episode < NUM_EPISODES:
         pass
 
     episode += 1
+
