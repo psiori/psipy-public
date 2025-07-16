@@ -74,9 +74,9 @@ class AutocraneDiscreteAction(AutocraneAction):
     )
     legal_values = (  # speed is in meters per second
         (
-            (0, 0, 0), # max vel is 1.00 m/s
-            (-0.268, 0, 0.268),
-            (-0.095, 0, 0.095),
+            (0.0, 0.0, 0.0), # max vel is 1.00 m/s
+            (-0.268, 0.0, 0.268),
+            (-0.095, 0.0, 0.095),
         ),
     )
 
