@@ -304,9 +304,9 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         state_dict["hoist_limit_dist_down"] = self.hoist_min - raw_hoist_pos
 
         # copy current actions to state representation
-        state_dict["trolley_target_vel_ACT"] = action_dict["trolley_target_vel"]
-        state_dict["hoist_target_vel_ACT"] = action_dict["hoist_target_vel"]
-        state_dict["gantry_target_vel_ACT"] = action_dict["gantry_target_vel"]
+        state_dict["trolley_target_vel_ACT"] = action_dict["trolley_target_vel"] if "trolley_target_vel" in action_dict else 0.0
+        state_dict["hoist_target_vel_ACT"] = action_dict["hoist_target_vel"] if "hoist_target_vel" in action_dict else 0.0
+        state_dict["gantry_target_vel_ACT"] = action_dict["gantry_target_vel"] if "gantry_target_vel" in action_dict else 0.0
 
         # print("State dict:", state_dict)
         # print("Set point:", self.set_point_trolley)
