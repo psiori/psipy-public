@@ -69,7 +69,7 @@ class AutocraneTrolleyHoistAction(AutocraneAction):
     dtype = "discrete"
     channels = (
         "trolley_target_vel",
-        "hoist_tatget_vel",
+        "hoist_target_vel",
     )
     legal_values = (
         (-0.268, 0.0, 0.268),  
