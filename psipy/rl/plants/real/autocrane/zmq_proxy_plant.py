@@ -287,14 +287,14 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         # move absolute position to a relative one in respect to the
         # present set point
 
-        if self.set_point_gantry is not None:
-            state_dict["gantry_pos"] = state_dict["gantry_pos"] - self.set_point_gantry
+        if self._gantry_set_point is not None:
+            state_dict["gantry_pos"] = state_dict["gantry_pos"] - self._gantry_set_point
 
-        if self.set_point_trolley is not None:
-            state_dict["trolley_pos"] = state_dict["trolley_pos"] - self.set_point_trolley
+        if self._trolley_set_point is not None:
+            state_dict["trolley_pos"] = state_dict["trolley_pos"] - self._trolley_set_point
 
-        if self.set_point_hoist is not None:
-            state_dict["hoist_pos"] = state_dict["hoist_pos"] - self.set_point_hoist
+        if self._hoist_set_point is not None:
+            state_dict["hoist_pos"] = state_dict["hoist_pos"] - self._hoist_set_point
 
         # make limits relative
         state_dict["trolley_limit_dist_left"] = self.trolley_min - raw_trolley_pos
