@@ -269,6 +269,7 @@ class PickyBatch(Sequence):
         return len(self.batch)
 
     def __getitem__(self, idx):
+        
         sa, t, w = self.batch.statesactions_targets[idx]
 
         # The targets are either shaped (N_SAMPLES, 1) or (N_SAMPLES, N_ACT).
@@ -320,7 +321,7 @@ class NFQs(Controller):
         control_pairs: Optional[Tuple[Tuple[str, str], ...]] = None,
         num_repeat: int = 0,
         doubleq: bool = False,
-        optimizer: Union[str, tf.keras.optimizers.Optimizer] = "RMSProp",
+        optimizer: Union[str, tf.keras.optimizers.Optimizer] = "Adam",
         prioritized: bool = False,
         disable_terminals: bool = True,
         **kwargs,

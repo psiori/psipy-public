@@ -10,11 +10,26 @@ class AutocraneTrolleyTrajectoryPlot:
                  trolley_position_idx: int = 0,
                  trolley_vel_idx: int = 1,
                  trolley_sway_idx: int = 2,
-                 do_display: bool = True):
+                 trolley_sway_vel_idx: int = 3,
+                 hoist_position_idx: int = 4,
+                 hoist_vel_idx: int = 5,
+                 do_plot_hoist: bool = False,
+                 do_display: bool = True,
+                 trolley_margin = 0.3,
+                 hoist_margin = 0.1,
+                 sway_margin = 0.04):
         self.trolley_position_idx = trolley_position_idx
         self.trolley_vel_idx = trolley_vel_idx
         self.trolley_sway_idx = trolley_sway_idx
+        self.trolley_sway_vel_idx = trolley_sway_vel_idx
+        self.hoist_position_idx = hoist_position_idx
+        self.hoist_vel_idx = hoist_vel_idx
 
+        self.trolley_margin = trolley_margin
+        self.hoist_margin = hoist_margin
+        self.sway_margin = sway_margin
+
+        self.do_plot_hoist = do_plot_hoist
         self.episode = None
         self.filename = filename
         self.fig = None
@@ -47,7 +62,10 @@ class AutocraneTrolleyTrajectoryPlot:
             return
 
         if self.fig is None:
-            self.fig, self.axs = plt.subplots(4, figsize=(10, 8))
+            if self.do_plot_hoist:
+                self.fig, self.axs = plt.subplots(6, figsize=(10, 10))
+            else:
+                self.fig, self.axs = plt.subplots(4, figsize=(10, 8))
             self.fig.tight_layout(rect=[0, 0.03, 1, 0.95])
         elif not self._is_notebook():
             plt.figure(self.fig.number)
@@ -62,30 +80,81 @@ class AutocraneTrolleyTrajectoryPlot:
         a = self.episode._actions[:, 0]
         cost = self.episode.costs
 
-        self.axs[0].plot(x, label="trolley_position")
-        self.axs[0].set_title("trolley_position")
-        self.axs[0].set_ylabel("Position")
-        self.axs[0].legend()
+        if self.do_plot_hoist:
+            hoist_pos = self.episode.observations[:, self.hoist_position_idx]
+            hoist_vel = self.episode.observations[:, self.hoist_vel_idx]
+            hoist_action = self.episode._actions[:, 1]
 
-        self.axs[1].plot(sway, label="sway")
-        self.axs[1].axhline(0, color="grey", linestyle=":", label="target")
-        self.axs[1].set_title("sway")
-        self.axs[1].set_ylabel("Sway")
-        self.axs[1].legend()
+        axis_counter = 0
 
-        self.axs[2].plot(a, label="action")
-        self.axs[2].plot(x_s, color="black", alpha=0.4, label="trolley_velocity")
-        self.axs[2].axhline(0, color="grey", linestyle=":")
-        self.axs[2].set_title("Control")
-        self.axs[2].set_ylabel("Velocity")
-        self.axs[2].set_ylim((-0.5, 0.5))
-        self.axs[2].legend(loc="upper left")
+
+        self.axs[axis_counter].plot(x, label="trolley_position")
+        self.axs[axis_counter].axhline(0, color="grey", linestyle=":", label="target")
+        # Add blue shaded area of ±0.4m around target to show acceptable deviation
+        self.axs[axis_counter].axhspan(-self.trolley_margin, 
+                                       self.trolley_margin, 
+                                       color='grey', alpha=0.2, label='acceptable range')
+        # Add darker blue lines at boundaries
+        self.axs[axis_counter].axhline(-self.trolley_margin, color='grey', alpha=0.5)
+        self.axs[axis_counter].axhline(self.trolley_margin, color='grey', alpha=0.5)
+        self.axs[axis_counter].set_title("trolley_position")
+        self.axs[axis_counter].set_ylabel("Position")
+        self.axs[axis_counter].set_ylim((-4.5, 4.5))
+        self.axs[axis_counter].legend()
+        axis_counter += 1
+        
+        if self.do_plot_hoist:
+            self.axs[axis_counter].plot(hoist_pos, label="hoist_position")
+            self.axs[axis_counter].axhline(0, color="grey", linestyle=":", label="target")
+            # Add blue shaded area of ±0.4m around target to show acceptable deviation
+            self.axs[axis_counter].axhspan(-self.hoist_margin, 
+                                           self.hoist_margin, 
+                                           color='grey', alpha=0.2, label='acceptable range')
+            # Add darker blue lines at boundaries
+            self.axs[axis_counter].axhline(-self.hoist_margin, color='grey', alpha=0.5)
+            self.axs[axis_counter].axhline(self.hoist_margin, color='grey', alpha=0.5)
+            self.axs[axis_counter].set_ylim((-1.0, 1.0))
+            self.axs[axis_counter].set_title("hoist_position")
+            self.axs[axis_counter].set_ylabel("Position")
+            self.axs[axis_counter].legend()
+            axis_counter += 1
+
+        self.axs[axis_counter].plot(sway, label="sway")
+        self.axs[axis_counter].axhline(-self.sway_margin, color="grey", linestyle=":", label="target")
+        self.axs[axis_counter].axhline(self.sway_margin, color="grey", linestyle=":")
+        self.axs[axis_counter].set_title("sway")
+        self.axs[axis_counter].set_ylabel("Sway")
+        self.axs[axis_counter].set_ylim((-0.15, 0.15))
+        self.axs[axis_counter].legend()
+        axis_counter += 1
+
+        self.axs[axis_counter].plot(a, label="trolley action")
+        self.axs[axis_counter].plot(x_s, color="black", alpha=0.4, label="trolley_velocity")
+        self.axs[axis_counter].axhline(0, color="grey", linestyle=":")
+        self.axs[axis_counter].set_title("Control")
+        self.axs[axis_counter].set_ylabel("Velocity")
+        self.axs[axis_counter].set_ylim((-0.5, 0.5))
+        self.axs[axis_counter].legend(loc="upper left")
+        axis_counter += 1
+
+        if self.do_plot_hoist:
+            self.axs[axis_counter].plot(hoist_action, label="hoist action")
+            self.axs[axis_counter].plot(hoist_vel, color="black", alpha=0.4, label="hoist_velocity")
+            self.axs[axis_counter].axhline(0, color="grey", linestyle=":")
+            self.axs[axis_counter].set_title("Hoist Control")
+            self.axs[axis_counter].set_ylabel("Velocity")
+            self.axs[axis_counter].set_ylim((-0.2, 0.2))
+            self.axs[axis_counter].legend(loc="upper left")
+            axis_counter += 1
+            
 
         if cost is not None:
-            self.axs[3].plot(cost, label="cost")
-            self.axs[3].set_title("cost")
-            self.axs[3].set_ylabel("cost")
-            self.axs[3].legend()
+            self.axs[axis_counter].plot(cost, label="cost")
+            self.axs[axis_counter].set_title("cost")
+            self.axs[axis_counter].set_ylabel("cost")
+            self.axs[axis_counter].set_ylim((0.0, 0.03))
+            self.axs[axis_counter].legend()
+            axis_counter += 1
 
         if self.episode_num is None:
             title = "Trolley Control"

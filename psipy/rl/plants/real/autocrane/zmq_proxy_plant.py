@@ -34,7 +34,9 @@ class AutocraneState(State):
         "trolley_vel",
         "grapple_vel",
         "grapple_sway_trolley",
+        "grapple_sway_trolley_vel",
         "grapple_sway_gantry",
+        "grapple_sway_gantry_vel",
         "grapple_loaded",
         "gantry_limit_dist_left",
         "gantry_limit_dist_right",
@@ -72,7 +74,7 @@ class AutocraneTrolleyHoistAction(AutocraneAction):
         "hoist_target_vel",
     )
     legal_values = (
-        (-0.268, 0.0, 0.268),  
+        (-0.268, -0.082, 0.0, 0.082, 0.268),  
         (-0.095, 0.0, 0.095),
     )
 class AutocraneDiscreteAction(AutocraneAction):
@@ -128,6 +130,7 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
                  state_sub_address: str = "tcp://192.168.50.25:7555", 
                  action_pub_address: str = "tcp://192.168.50.25:7556",
                  randomize_set_points: bool = True,
+                 alternating_set_points: bool = False,
                  hoist_active: bool = False,
                  action_type: AutocraneAction = None, 
                  **kwargs):
@@ -163,6 +166,8 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         
         # Set point related attributes
         self._randomize_set_points = randomize_set_points
+        self._alternating_set_points = alternating_set_points and not randomize_set_points
+        self.next_option = 0
         self.trolley_min = None
         self.trolley_max = None
         self.hoist_min = None
@@ -201,6 +206,33 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         """
         print(f"Setting set point to {position}")
         self._hoist_set_point = position
+
+    def set_alternating_set_point(self):
+        """
+        Sets the set point for the trolley position to the alternating set point.
+        """
+
+        if self.hoist_min is None or self.hoist_max is None:
+            return
+
+        options = (
+            (self.trolley_min + 0.6, self.hoist_min + 0.4),
+            (self.trolley_max - 0.6, self.hoist_min + 0.4),
+            ((self.trolley_min + self.trolley_max) / 2.0, 
+             (self.hoist_min + self.hoist_max) / 2.0), # point in the center of the Z or X-shaped movement / cross of the X
+            (self.trolley_min + 0.6, self.hoist_max - 0.4),
+            (self.trolley_max - 0.6, self.hoist_max - 0.4),
+
+        )
+        self.set_point_trolley = options[self.next_option][0]
+
+        if self.hoist_active:
+            self.set_point_hoist = options[self.next_option][1]
+        
+        self.next_option = (self.next_option + 1) % len(options)
+
+        print(f"Setting alternating set points to {self.set_point_trolley}, {self.set_point_hoist}")
+
 
     def set_random_set_point(self):
         """
@@ -295,7 +327,8 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
     
     def _process_and_update_from(self, 
                                  state_dict,
-                                 action_dict) -> AutocraneState:
+                                 action_dict,
+                                 current_state=None) -> AutocraneState:
         """
         Processes the state dictionary received from the Autocrane system and
         updates it to be compatible with the reinforcement learning environment.
@@ -335,6 +368,16 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         state_dict["trolley_target_vel_ACT"] = action_dict["trolley_target_vel"] if "trolley_target_vel" in action_dict else 0.0
         state_dict["hoist_target_vel_ACT"] = action_dict["hoist_target_vel"] if "hoist_target_vel" in action_dict else 0.0
         state_dict["gantry_target_vel_ACT"] = action_dict["gantry_target_vel"] if "gantry_target_vel" in action_dict else 0.0
+        state_dict["grapple_target_vel_ACT"] = action_dict["grapple_target_vel"] if "grapple_target_vel" in action_dict else 0.0
+
+        # calculate grapple sway velocity
+        if current_state is not None:
+            state_dict["grapple_sway_trolley_vel"] = current_state["grapple_sway_trolley"] - state_dict["grapple_sway_trolley"]
+            state_dict["grapple_sway_gantry_vel"] = current_state["grapple_sway_gantry"] - state_dict["grapple_sway_gantry"]
+            # TODO: normalize by time to fight jitter
+        else:
+            state_dict["grapple_sway_trolley_vel"] = 0.0
+            state_dict["grapple_sway_gantry_vel"] = 0.0
 
         # print("State dict:", state_dict)
         # print("Set point:", self.set_point_trolley)
@@ -389,17 +432,17 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         latest_message = self._receive_message()
         state_dict = self._state_dict_from_autocrane_message(latest_message)
 
-        new_state = self._process_and_update_from(state_dict, action_dict)
+        new_state = self._process_and_update_from(state_dict, action_dict,
+                                                  self._current_state)
 
-        print("L:\t", new_state["trolley_limit_dist_left"], 
-              "\tT:\t", new_state["trolley_set_point_delta"], 
-              "\tR:\t", new_state["trolley_limit_dist_right"],
-              "\tAT:\t", action_dict["trolley_target_vel"],
-              "\t\tU:\t", new_state["hoist_limit_dist_up"],
-              "\tH:\t", new_state["hoist_set_point_delta"],
-              "\tD:\t", new_state["hoist_limit_dist_down"],
-              "\tAH:\t", action_dict["hoist_target_vel"])
-
+        print("\t L: {:.2f}".format(new_state["trolley_limit_dist_left"]),
+              "\t T: {:.2f}".format(new_state["trolley_set_point_delta"]),
+              "\t R: {:.2f}".format(new_state["trolley_limit_dist_right"]), 
+              "\t AT: {:.3f}".format(action_dict["trolley_target_vel"]),
+              "\t\tU: {:.2f}".format(new_state["hoist_limit_dist_up"]),
+              "\t H:  {:.2f}".format(new_state["hoist_set_point_delta"]),
+              "\t D: {:.2f}".format(new_state["hoist_limit_dist_down"]),
+              "\t AH: {:.3f}".format(action_dict["hoist_target_vel"]))
         self._current_state = new_state
         return new_state
 
@@ -416,6 +459,9 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
 
         if self._trolley_set_point is None and self._randomize_set_points:
             self.set_random_set_point()
+
+        if self._trolley_set_point is None and self._alternating_set_points:
+            self.set_alternating_set_point()
         
         # Create the initial state
         initial_state = self._process_and_update_from(state_dict, { 
@@ -435,6 +481,9 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
 
         if self._randomize_set_points:
             self.set_random_set_point()
+
+        elif self._alternating_set_points:
+            self.set_alternating_set_point()
 
         self.move_away_from_limits()
         return True
@@ -461,14 +510,13 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
 
             state_dict = self._state_dict_from_autocrane_message(message)
             state = self._process_and_update_from(state_dict, {
-                "trolley_target_vel": target_trolley_vel,
-                "hoist_target_vel": target_hoist_vel,
-            })
+                    "trolley_target_vel": target_trolley_vel,
+                    "hoist_target_vel": target_hoist_vel })
             cycle_number = state_dict["cycle_number"]
 
             print (f"IN MOVE AWAY FROM LIMITS: Cycle { cycle_number } Trolley position: {message['trolley_pos']}, limits: {self.trolley_min} - {self.trolley_max}, {self.hoist_min}-{self.hoist_max}")
 
-            trolley_ok = trolley_pos > self.trolley_min + 1.50 and trolley_pos < self.trolley_max - 1.50
+            trolley_ok = trolley_pos > self.trolley_min + 0.10 and trolley_pos < self.trolley_max - 0.1
 
             hoist_ok = not self.hoist_active or (self.hoist_active and hoist_pos > self.hoist_min + 0.20 and hoist_pos < self.hoist_max - 0.20)
 
