@@ -1,10 +1,7 @@
-# PSIORI Machine Learning Toolbox
-# ===========================================
-#
 # Copyright (C) PSIORI GmbH, Germany
-# Proprietary and confidential, all rights reserved.
+# Authors: Sascha Lange
 
-"""Example script that learns cartpole with NFQs."""
+"""Minimal example script that learns to swingup and balance the cartpole with NFQ using three discrete actions (-300, 0, 300) to chose from. Does not expect any parameters from the command line but uses the hyper paramters described in the NFQ 2.0 paper."""
 
 import sys
 
@@ -33,7 +30,7 @@ STACKING = 1            # history length. 1 = no stacking, just the current stat
 EPSILON = 0.05          # epsilon-greedy exploration
 
 DEFAULT_STEP_COST = 0.01
-TERMINAL_COST = 1.0     # this is the cost for leaving the track.
+TERMINAL_COST = 1.0     # this is the cost for leaving the track. ATTENTION: it needs to be high enough to prevent creating a "shortcut" for the agent; it needs to be higher than the accumulated discounted step costs for the steps going to infinity. For a gamma of 0.98, the geometric series converges to 50x the step cost (as lim(t to infinity) of sum(gamma^t) = 50). We choose the terminal costs to be 100 times the step cost to be on the safe side and make it easy for the agent to understand there is no benefit in leaving the track.
 
 STATE_CHANNELS = [
     "cart_position",
@@ -49,7 +46,7 @@ ACTION_CHANNELS = [
 ]
 
 SART_FOLDER = "sart-cartpole-train"  # Define where we want to save our SART files
-X_THRESHOLD = 3.6                    # (half) cart track length. Provide more space than balancing standard for swingup.
+X_THRESHOLD = 3.6                    # (half) cart track length. Provide more space than balancing standard in the FARAMA gym for swingup.
 
 def make_model(n_inputs, lookback):
     inp = tfkl.Input((n_inputs, lookback), name="states")
@@ -158,12 +155,14 @@ while episode < NUM_EPISODES:
     # although riedmiller argues in his tips and tricks book chapter, that, 
     # for his case, doing this is unproblematic, this is a little bit risky, 
     # in our case, as we do not reset the neural network weights
-    # after each epsiode but continue with the previous network. Thus, this
-    # does "move" the data below the current network slightly. In practice, it 
-    # becomes usually negligible after a number of episodes. If you want to be safe,
-    # stop refitting after some time, but not too early, to make sure you
-    # have collected data from all parts of the state space (pole upward, high
-    # velocities).
+    # after each epsiode but continue with the previous network, whereas 
+    # riedmiller used a new network after each episode. For us, the normalizer
+    # "moves" the data "below" the current networks input units slightly. In 
+    # practice, it  becomes usually negligible after a number of episodes
+    # (see the NFQ 2.0 paper for an empiricial evaluation of this). If you want 
+    # to be safe, stop refitting after some time, but not too early, to make 
+    # sure you have collected data from all parts of the state space (pole 
+    # upward, high velocities).
 
     try:
         nfqs.fit(
