@@ -40,7 +40,7 @@ ACTION_CHANNELS = [
     "move_y",
 ]
 
-SART_FOLDER = "sart-wumpus-train"  # Define where we want to save our SART files
+SART_FOLDER = "psidata-nfqs-sart-wumpus-train"  # Define where we want to save our SART files
 
 def make_model(n_inputs, n_action_dims, lookback):
     inp = tfkl.Input((n_inputs, lookback), name="states")

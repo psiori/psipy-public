@@ -45,7 +45,7 @@ ACTION_CHANNELS = [
     "move",
 ]
 
-SART_FOLDER = "sart-cartpole-train"  # Define where we want to save our SART files
+SART_FOLDER = "psidata-nfqs-sart-cartpole-train"  # Define where we want to save our SART files
 X_THRESHOLD = 3.6                    # (half) cart track length. Provide more space than balancing standard in the FARAMA gym for swingup.
 
 def make_model(n_inputs, lookback):
