@@ -61,8 +61,14 @@ class CartPoleExtendedBangAction(CartPoleAction):
 
     dtype = "discrete"
     channels = ("move",)
-    legal_values = ((-10, 10, 0),)
+    legal_values = ((-10, 0, 10),)
 
+
+class CartPoleContinuousAction(CartPoleAction):
+    """Action with continuous values"""
+    dtype = "continuous"
+    channels = ("move",)
+    legal_values = ((-10, 10),)
 
 
 class CartPoleState(State):
