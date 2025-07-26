@@ -31,20 +31,32 @@ The option '-e' is used to install the package in editable mode, which allows yo
 
 The options '[dev,gym]' are used to install additional dependencies for the development environment (inclduing pytest and jupyter) as well as AI gym together with its own dependencies. Please be aware that we switched to Farama-Foundations's fork [Gymnasium](https://github.com/Farama-Foundation/Gymnasium) of OpenAI's gym when they took over maintenance of the original gym library.
 
-Presently, only a few example scripts have been ported and tested to work with the public version of psipy:
+## Getting started
 
-- examples/rl/simulated_cartpole/nfq_psiori_cartpole.py and
-- examples/rl/simulated_cartpole/nfqs_psiori_cartpole_minimal.py, which will learn to swing up and balance a simulated cart-pole system.
+To get started, we propose to have a look at 
 
-The second script probably is the best starting point as it is an example of about the minimal code that is needed to successfully learn a policy on the simulated cartpole system to swing up, stabilize and balance the pole from scratch within 80 to 140 episodes. It uses our NFQ variant that has the actions encoded in the input layer (named "NFQs"). It can be run after activating the above environment as follows:
+   - examples/rl/simulated_cartpole/nfqs_psiori_cartpole_minimal.py
+
+which will learn to swing up and balance a simulated cart-pole system.
+
+The script is an example of about the minimal code that is needed to successfully learn a policy on the simulated cartpole system to swing up, stabilize and balance the pole from scratch within 80 to 140 episodes. It uses our NFQ variant that has the actions encoded in the input layer (named "NFQs"). It can be run after activating the above environment as follows:
 ```Shell
 cd examples/rl/simulated_cartpole/
 python3 nfqs_psiori_cartpole_minimal.py
 ```
 
-## Usage
+A slightly longer version that can be run using
+```Shell
+cd examples/rl/simulated_cartpole/
+python3 nfqs_psiori_cartpole.py
+```
+also demonstrate saving and loading models, running evaluations separate from the training runs and creating different plots automatically while running the experiment.
 
-To get started with using psipy, you can explore the provided tutorials. One of the best ways to familiarize yourself with the library is by running the batch tutorial Jupyter notebook. Here's how you can do that:
+## Tutorials
+
+Please be aware, that not all tutorials have been ported from the internal to the public version of psipy, yet. Specifically, import paths are likely to be wrong.
+
+You can also explore the provided tutorials. One of the best ways to familiarize yourself with the library is by running the batch tutorial Jupyter notebook. Here's how you can do that:
 
 1. Navigate to the examples directory in your terminal:
 
