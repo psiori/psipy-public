@@ -42,7 +42,7 @@ from psipy.rl.visualization.plotting_callback import PlottingCallback
 
 # Define where we want to save our SART files
 EXPERIMENT_FOLDER = "experiment-nfqs-cartpole"
-SART_FOLDER = f"{EXPERIMENT_FOLDER}/psidata-nfqs-sart-cartpole"
+SART_FOLDER = f"{EXPERIMENT_FOLDER}/psidata-sart-cartpole"
 PLOT_FOLDER = f"{EXPERIMENT_FOLDER}/plots"
 
 RENDER = True
