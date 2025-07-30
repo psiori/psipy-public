@@ -54,7 +54,22 @@ class CartPoleBangAction(CartPoleAction):
 
     dtype = "discrete"
     channels = ("move",)
+    legal_values = ((-10, 0, 10),)
+
+class CartPoleExtendedBangAction(CartPoleAction):
+    """Action with left actions right actions"""
+
+    dtype = "discrete"
+    channels = ("move",)
+    legal_values = ((-10, 0, 10),)
+
+
+class CartPoleContinuousAction(CartPoleAction):
+    """Action with continuous values"""
+    dtype = "continuous"
+    channels = ("move",)
     legal_values = ((-10, 10),)
+
 
 class CartPoleState(State):
     """Cartpole state that uses trig values for the angle instead of radian/deg."""
@@ -134,12 +149,17 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         state_type: Type[CartPoleState] = CartPoleState,
         action_type: Type[CartPoleAction] = CartPoleBangAction,
         render_mode: str = "human",
+        do_not_reset: bool = False,
     ):
         if cost_function is None:
             cost_function = make_default_cost_function(x_threshold)
             print("CartPole is using default cost function")
       
         super().__init__(cost_function=cost_function)
+
+        self.renderable = True
+
+        self.do_not_reset = do_not_reset
 
         self.x_threshold = x_threshold
         self.state_type = state_type
@@ -238,8 +258,6 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         if abs(x) > self.x_threshold:
             terminal = True
 
-            print("\n\n\n<<<<<<<<<\n IN get_next_state: TERMINAL with x={} and x_threshold={}\n\n\n<<<<<<<<<<\n".format(x, self.x_threshold))
-
         info["force"] = force
         info["theta_accel"] = thetaacc
         info["x_accel"] = xacc
@@ -247,7 +265,8 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         return CartPoleState([x, x_dot, theta, sin, cos, theta_dot, force], 0.0, terminal)
     
     def notify_episode_stops(self) -> bool:
-        self.reset()
+        if not self.do_not_reset or self._current_state.terminal:
+            self.reset()
         return True
     
     def reset(self):
@@ -369,6 +388,8 @@ def plot_swingup_state_history(
     filename: Optional[str] = None,
     episode_num: Optional[int] = None,
     figure: Optional[plt.Figure] = None,
+    do_display=True,
+    title_string=None
 ) -> None:
     """Creates a plot that details the controller behavior.
 
@@ -444,15 +465,24 @@ def plot_swingup_state_history(
         axes[4].legend()
 
     if episode_num is None:
-        figure.suptitle("Simulated Cartpole")
+        title = "Simulated Cartpole"
     else:
-        figure.suptitle(f"Simulated Cartpole, Episode {episode_num}")
-    
+        title = "Simulated Cartpole, Episode {}".format(episode_num)
+
+    if title_string:
+        title = title + " - " + title_string
+
+    figure.suptitle(title)
+   
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     if filename:
         figure.savefig(filename)
         # plt.close(figure)
-    else:
+    
+    if do_display:
         plt.pause(0.01)
+    else:
+        plt.close()
+        return None
 
     return figure

@@ -35,6 +35,8 @@ from psipy.rl.core.exceptions import NotNotifiedOfEpisodeStart
 from psipy.rl.io.sart import SARTLogger
 from psipy.rl.core.plant import Plant, State, TAction, TState
 
+from pprint import pprint
+
 __all__ = ["Loop", "LoopPrettyPrinter"]
 
 LOG = logging.getLogger(__name__)
@@ -241,4 +243,5 @@ class Loop:
                 "cycles_run": cycles,
                 "wall_time_s": round(time.time() - start_time, 4),
             }
+
         return False  # exit only current episode

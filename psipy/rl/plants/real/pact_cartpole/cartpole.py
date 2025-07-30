@@ -24,6 +24,7 @@ import zmq
 from psipy.rl import CM
 from psipy.rl.core.controller import Controller
 from psipy.rl.io.sart import SARTReader
+from psipy.rl.io.batch import Episode
 from psipy.rl.core.plant import Action, Plant, State
 
 from psipy.rl.plants.real.pact_cartpole.plc_zmq import Commands, HardwareComms
@@ -75,28 +76,53 @@ class SwingupContinuousDiscreteAction(Action):
     dtype = "discrete"
     channels = ("direction",)
     legal_values = (
-        (  # SL: problem: 0 is not zero :-()  present zero is near 150 (oh: due to operator! )
-            #150,
-            #-100,
-            #100,
-            #200,
-            #-200,
-            #300,
-            #-300,
-            #400,
-            #-400,
-            # 500,
-            #-500,
-            # 600,
-            # -600,
-            # 700,
+        (
+            -300,
+            0,
+            300,
+        ),
+    )
+
+class SwingupContinuousExtendedDiscreteAction(Action):
+    """More speeds in either direction."""
+
+    dtype = "discrete"
+    channels = ("direction",)
+    legal_values = (
+        (
+            -300,
+            0,
+            300,
+            -60,
+            60,
             -500,
             500,
-            #-700,
-            # 900,
-            # -900,
-            # 1000,
-            # -1000,
+            -150,
+            150,
+            -10,
+            10,  # ORIGINAL ENDED HERE
+            -5,
+             5,
+            -1,
+             1,
+            -20,
+            20,
+            -2,
+             2,
+            -3,
+             3,
+            -30,
+            30,
+           -90,
+            90,
+           -40,
+            40,
+           -50,
+            50,
+           -100,
+            100,
+           -200,
+            200
         ),
     )
 
@@ -229,6 +255,7 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         self.comms_initialized = False
         # self.ctx = zmq.Context()
         self.hostname = hostname
+        print("HOSTNAME DONE", self.hostname)
         # if not self.setup_config_subscription(command_port):
         #     LOG.warning("Subscribing to cmd socket failed; stop script manually.")
         self.comms = HardwareComms(hostname, hilscher_port)
@@ -308,9 +335,13 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
     def initialize_comms(self) -> None:
         """Start zmq comms and set up initial parameters."""
         self.comms.send(Commands.RESET_ALL)
+        print("INITIALIZE COMMS SEND RESET ALL DONE")
         self.comms.receive()
+        print("INITIALIZE COMMS RECEIVE DONE")
         self.comms.send(Commands.HERTZ, self.ACTION_DELAY * 1000)
+        print("INITIALIZE COMMS SEND HERTZ DONE")
         self.comms.receive()
+        print("INITIALIZE COMMS RECEIVE DONE")
         self.set_speeds(self.speeds)
 
     def assert_continue_run(self) -> None:
@@ -489,6 +520,7 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         #TODO I added the dist stops, added reset params, and slowed down the operator to 150 from 250
 
     def check_initial_state(self, state: Optional[SwingupState]) -> SwingupState:
+        print("CHECKING INITIAL STATE")
         self.assert_continue_run()
         assert self.episode_steps == 0
         self.comms.send_NOOP()  # need to send to receive
@@ -499,8 +531,8 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         x_dot = (x_ - x) #/ (ts_ - ts)
         theta_dot = angle_slope(theta_, theta) #/ (ts_ - ts)
         self._prev_ts = ts_
-        right_dist = abs(self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET - x_ + self.zero_position)
-        left_dist = abs(self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET - x_ + self.zero_position)
+        right_dist = self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET - x_ + self.zero_position   # positive, if terminal state is still to the right (normal case)
+        left_dist = self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET - x_ + self.zero_position   # negative, if terminal state is still to the left (normal case)
         #operator = 0.0 # 150 if x_ < 0 else -150  #TODO 250
         obs = OrderedDict(
             cart_position=x_,
@@ -590,8 +622,13 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
             x_dot = (x_ - x) #/ (ts_ - self._prev_ts)
             theta_dot = angle_slope(theta_, theta) #/ (ts_ - self._prev_ts)
             self._prev_ts = ts_
-            right_dist = self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET -true_x
-            left_dist = - (self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET - true_x)
+
+            right_dist = self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET - x_ + self.zero_position   # positive, if terminal state is still to the right (normal case)
+            left_dist = self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET - x_ + self.zero_position   # negative, if terminal state is still to the left 
+
+            # SL: this was not the same as in check_initial_state! see below
+            # right_dist = self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET -true_x
+            # left_dist = - (self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET - true_x)
             # print("L:\t", left_dist, "\tP:", true_x, "\tR:", right_dist)
             obs = dict(
                 cart_position=x_,
@@ -724,6 +761,9 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         """
         angle_goal = 0.15
 
+        if state is None:
+            return False
+
         if np.abs(state["pole_angle"]) < angle_goal:
             return True
         return False
@@ -793,13 +833,17 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         return
 
     def notify_episode_starts(self) -> bool:
+        print("NOTIFYING EPISODE STARTS")
         self.assert_continue_run()
         super().notify_episode_starts()
         self.df_history = pd.DataFrame(columns=SwingupState.channels()) # SL: reset data for plotting
 
         self.comms.notify_episode_starts()
+        print("NOTIFYING EPISODE STARTS NOTIFY EPISODE STARTS DONE")
         self.initialize_comms()
+        print("NOTIFYING EPISODE STARTS INITIALIZE COMMS DONE")
         self.get_ready()
+        print("NOTIFYING EPISODE STARTS GET READY DONE")
         if self.sway_start:
             # Goal position is tested for > .5 to determine
             # left or right goals; it stays static throughout
@@ -823,6 +867,8 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         # for i in list(range(0,4)[::-1]):
         #     print(f"{i}\t{i}\t{i}\t{i}\t{i}\t{i}\t{i}")
         #     time.sleep(1)
+
+        print("NOTIFYING EPISODE STARTS DONE")
         return True
 
     def notify_episode_stops(self) -> bool:
@@ -864,10 +910,14 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
 
 
 def plot_swingup_state_history(
+    episode: Optional[Episode] = None,
+    sart_path: Optional[str] = None,
+    episode_num: Optional[int] = None,
     plant: Optional[SwingupPlant] = None,
     filename: Optional[str] = None,
-    sart_path: Optional[str] = None,
-    fig: Optional[plt.Figure] = None,
+    figure: Optional[plt.Figure] = None,
+    title_string: Optional[str] = None,
+    do_display: bool = True,
 ) -> None:
     """Creates a plot that details the controller behavior.
 
@@ -887,7 +937,7 @@ def plot_swingup_state_history(
 
     """
     cost = None
-    if sart_path:
+    if sart_path is not None:
         with SARTReader(sart_path) as sart:
             sart = sart.load_full_episode()
             x = sart[0][:, 0]
@@ -895,6 +945,16 @@ def plot_swingup_state_history(
             t = sart[0][:, 2]
             td = sart[0][:, 3]
             a = sart[0][:, 4]
+    elif episode is not None:
+        x = episode.observations[:, 0]
+        x_s = episode.observations[:, 1]
+        pole_sine = episode.observations[:, 2]
+        pole_cosine = episode.observations[:, 3]
+        td = episode.observations[:, 4]
+        t = episode.observations[:, 5]
+        a = episode._actions[:, 0]
+        cost = episode.costs
+
     else:
         plant = cast(SwingupPlant, plant)
         x = plant.df_history.cart_position
@@ -904,16 +964,14 @@ def plot_swingup_state_history(
         a = plant.df_history.direction_ACT
         cost = plant.df_history.cost
 
-    if fig is None:
-        fig, axs = plt.subplots(5, figsize=(10, 8))
+    if figure is None:
+        figure, axs = plt.subplots(5, figsize=(10, 8))
     else:
-        plt.figure(fig.number)
-        axs = fig.axes
+        plt.figure(figure.number)
+        axs = figure.axes
 
     for ax in axs:
         ax.clear()
-
-    axs[3].twinx().clear()
 
     axs[0].plot(x, label="cart_position")
     axs[0].set_title("cart_position")
@@ -922,11 +980,12 @@ def plot_swingup_state_history(
     axs[0].relim()
     axs[0].autoscale_view()
 
-    axs[1].plot(t, label="pole_angle")
-    axs[1].axhline(0, color="grey", linestyle=":", label="target")
+    axs[1].plot(pole_cosine, label="cos")
+    axs[1].plot(pole_sine, label="sin")
+#   axs[1].axhline(0, color="grey", linestyle=":", label="target")
     axs[1].set_title("Pole Angle")
     axs[1].relim()
-    axs[1].set_ylim((-3.15, 3.15))
+#   axs[1].set_ylim((-3.15, 3.15))
     axs[1].autoscale_view()
     axs[1].set_ylabel("Angle")
     axs[1].legend()
@@ -944,34 +1003,46 @@ def plot_swingup_state_history(
     axs[3].relim()
     axs[3].autoscale_view()
 
-    axs2b = axs[3].twinx()
-    axs2b.plot(x_s, color="black", alpha=0.4, label="True Velocity")
-    axs2b.set_ylabel("Steps/s")
-    axs2b.legend(loc="upper right")
-    axs2b.relim()
-    axs2b.autoscale_view()
+#    axs2b = axs[5]
+#    axs2b.plot(x_s, color="black", alpha=0.4, label="True Velocity")
+#    axs2b.set_ylabel("Steps/s")
+#    axs2b.legend(loc="upper right")
+#    axs2b.relim()
+#    axs2b.autoscale_view()
 
     axs[3].relim()
     axs[3].autoscale_view()
 
 
     if cost is not None:
-        axs[4].plot(plant.df_history.cost, label="cost")
+        axs[4].plot(cost, label="cost")
         axs[4].set_title("cost")
         axs[4].set_ylabel("cost")
         axs[4].legend()
         axs[4].relim()
         axs[4].autoscale_view()
 
-    plt.suptitle("NFQ Controller on Physical Swingup Model")
+    if episode_num is None:
+        title = "PACT Cartpole"
+    else:
+        title = "PACT Cartpole, Episode {}".format(episode_num)
+
+    if title_string:
+        title = title + " - " + title_string
+
+    figure.suptitle(title)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     if filename:
-        plt.savefig(filename)
+        figure.savefig(filename)
         #plt.close()
-    else:
-        plt.pause(0.01)
 
-    return fig
+    if do_display:
+        plt.pause(0.01)
+    else:
+        plt.close()
+        return None
+
+    return figure
 
 
 if __name__ == "__main__":
@@ -1230,3 +1301,76 @@ if __name__ == "__main__":
         print("Done.")
     print_state()
     plant.motor_off()
+
+
+class GeneralizedCartpolePlant(SwingupPlant):
+        """A cartpole plant that allows to set a relative set point on
+           the cart position axis. Allows moving the center or specifiying
+           specific position to move to.
+           
+           Make sure to use the dist_left / dist_right channels to encode
+           the bounding limits of the cart position axis."""
+
+        def __init__(self,
+                     *args,
+                     randomize_set_points=True,
+                     **kwargs):
+            super().__init__(*args, **kwargs)
+
+            self._set_point = self.CENTER  # center is the standard set point
+            self._current_relative_state = None
+
+            self._randomize_set_points = randomize_set_points
+
+        #
+        # QUESTION: where do set points belong?
+        #
+        # from industrial automation perspective: definitely to the controller.
+        # thus, we implement it here for now (for the convenience of it), but
+        # has to be also implemented in the controller (e.g. in a wrapper /
+        # glue code around the RL controller).
+        #
+
+        @property
+        def set_point(self):
+            return self._set_point
+
+        @set_point.setter
+        def set_point(self, position: float):
+            LOG.debug(f"Setting set point to {position}")
+            self._set_point = position
+            self._current_relative_state = None
+
+        def set_random_set_point(self):
+            self.set_point = np.random.uniform(
+                self.LEFT_SIDE + self.TERMINAL_LEFT_OFFSET * 1.5, 
+                self.RIGHT_SIDE - self.TERMINAL_RIGHT_OFFSET * 1.5)
+
+        def _get_next_state(
+            self, state: SwingupState,
+            action: SwingupContinuousDiscreteAction) -> SwingupState:
+
+            current_state = super()._get_next_state(self._current_state, action)
+            relative_state = current_state.copy()
+
+            relative_state["cart_position"] = relative_state["cart_position"] - self.set_point
+            self._current_relative_state = relative_state
+
+            print("L:\t", relative_state["dist_left"], "\tP:", relative_state["cart_position"], "\tR:", relative_state["dist_right"])
+
+            return self._current_relative_state
+        
+        def check_initial_state(self, state: Optional[SwingupState]) -> SwingupState:
+            current_state = super().check_initial_state(None)
+            relative_state = current_state.copy()
+            
+            relative_state["cart_position"] = relative_state["cart_position"] - self.set_point
+            self._current_relative_state = relative_state
+
+            return self._current_relative_state
+        
+        def notify_episode_stops(self):
+            if self._randomize_set_points:
+                self.set_random_set_point()
+            
+            return super().notify_episode_stops()

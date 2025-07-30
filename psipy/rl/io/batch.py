@@ -18,6 +18,7 @@ from collections import defaultdict
 from datetime import datetime
 from itertools import groupby
 from operator import itemgetter
+import sys
 from typing import Callable, ClassVar, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import numpy as np
@@ -406,7 +407,11 @@ class Batch(KSequence):
     ):
         if len(episodes) == 0:
             raise ValueError("No episodes passed to Batch!")
-        self._episodes = [e for e in episodes if len(e) > 0]
+        
+        self._episodes = [e for e in episodes if len(e) > 0] # respect lookback to make sure there is at least one stack
+        if len(self._episodes) == 0:
+            raise ValueError("First episode was completely empty and did not have a single observation stack!")
+    
         self._state_shape = self._episodes[0]._observations[0].shape
         self._action_shape = self._episodes[0]._actions[0].shape
         self._is_shuffled = False
@@ -869,13 +874,18 @@ class Batch(KSequence):
             except (KeyError, OSError) as e:
                 LOG.warning(f"{e} in file {hdf5_file}")
                 continue
-            if eps.is_valid():
+            if eps.is_valid() and len(eps) > 0:
                 episodes.append(eps)
         LOG.info(f"Loaded {len(episodes)} episodes (of {len(files)} files)")
         # Create the batch and set the loaded SART paths
-        batch = cls(episodes, control=control, prioritization=prioritization)
-        batch._loaded_sart_paths = set(files)
-        return batch
+        
+        if len(episodes) == 0:
+            LOG.warn("Not a single valid episode loaded from {} file(s).".format(len(files)))
+            return None
+        else:
+            batch = cls(episodes, control=control, prioritization=prioritization)
+            batch._loaded_sart_paths = set(files)
+            return batch
 
     def append_from_hdf5(
         self,
@@ -1066,3 +1076,21 @@ if __name__ == "__main__":
     batch.compute_costs(lambda x: x.ravel())
     comp = batch.set_minibatch_size(-1).sort().costs_terminals[0][0].ravel()
     print(comp, len(comp))
+
+    if (len(sys.argv) > 1):
+        filename = sys.argv[1]
+        print("Reading batch from folder ", filename)
+        batch = Batch.from_hdf5(filename,
+                                action_channels=["move_index"],
+                                state_channels=["cart_position", 
+                                                "cart_velocity",
+                                                "pole_sine",
+                                                "pole_cosine",
+                                                "pole_velocity"],
+                                lookback=1)
+
+        print ("Number of observations: ", len(batch.observations))        
+
+        states = batch.set_minibatch_size(-1).sort().states[0]
+        print ("States: ", states[:10])
+    

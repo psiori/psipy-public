@@ -420,6 +420,8 @@ class NFQCA(Controller):
         for _iteration in range(1, iterations + 1):
             # Compute target qs using the next states' predicted q values and bellman.
             batch.set_minibatch_size(-1).sort()
+
+            #breakpoint()
             qs = self.chained_critic(batch.nextstates).numpy().ravel()
             costs, terminals = batch.costs_terminals[0]
             target_qs = costs.ravel() + gamma * qs
