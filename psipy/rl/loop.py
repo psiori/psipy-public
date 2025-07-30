@@ -25,6 +25,7 @@ import time
 from collections import OrderedDict
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from pprint import pprint
 
 import numpy as np
 
@@ -167,6 +168,7 @@ class Loop:
 
             # Forces an initial state if one is provided.
             state = self.plant.check_initial_state(initial_state)
+            # self.trajectory.append(state) # TODO(SL): this was missing. Please check and leave a comment if it was intentional.
 
             while True:
                 cycles += 1
@@ -220,6 +222,11 @@ class Loop:
             CM.handle_exception(e)
             raise e  # Loop may crash, crashes should be handled one level up.
         finally:  # Cleanup local resources.
+            #print("\n>>>> START OF TRAJECTORY:")
+            #pprint(self.trajectory)
+            #print("<<<< END OF TRAJECTORY")
+            #print("Trajectory length: ", len(self.trajectory))
+
             if pretty_printer is not None:
                 pretty_printer.print_total_cost()
             try:
