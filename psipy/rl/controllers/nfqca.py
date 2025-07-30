@@ -269,6 +269,7 @@ class NFQCA(Controller):
         # action_out = ClipLayer(-1, 1)(action_out)
 
         critic = self._critic
+
         q1 = critic(common_state + [action_in])
         chained_q1 = critic(common_state + [action_out])
 
@@ -334,22 +335,26 @@ class NFQCA(Controller):
             if self.td3:
                 mse = mse + Loss()(q_targets, q2)
             return mse
+        
+        class CriticLoss(tf.keras.losses.Loss):
+            def call(self, y_true, y_pred):
+                return tf.keras.losses.MeanSquaredError()(y_true, q1l)
 
         # Compile critic model, collecting trainable variables.
         self._critic.compile(
             optimizer=self.get_optimizer(),
-            loss=critic_loss,
-            metrics=[
-                min_q,
-                avg_q,
-                max_q,
-                min_act_in,
-                avg_act_in,
-                max_act_in,
-                min_act,
-                avg_act,
-                max_act,
-            ],
+            loss=CriticLoss(), # critic_loss,
+            # metrics=[
+            #     min_q,
+            #     avg_q,
+            #     max_q,
+            #     min_act_in,
+            #     avg_act_in,
+            #     max_act_in,
+            #     min_act,
+            #     avg_act,
+            #     max_act,
+            # ],
         )
 
         # Make the actor only train actor variables, although the gradient is
@@ -367,7 +372,7 @@ class NFQCA(Controller):
         self._actor.compile(
             optimizer=self.get_optimizer(action_bounds=action_bounds, actorcritic=True),
             loss=lambda t, p: chained_q1,  # NOTE: Using output of q1 only, even in td3!
-            metrics=[min_q, max_q, avg_q, min_act, avg_act, max_act],
+            #metrics=[min_q, max_q, avg_q, min_act, avg_act, max_act],
         )
 
         # Make sure the critic's trainable variables are still the same as
@@ -422,7 +427,7 @@ class NFQCA(Controller):
             batch.set_minibatch_size(-1).sort()
 
             #breakpoint()
-            qs = self.chained_critic(batch.nextstates).numpy().ravel()
+            qs = self.chained_critic(batch.nextstates[0]).numpy().ravel()
             costs, terminals = batch.costs_terminals[0]
             target_qs = costs.ravel() + gamma * qs
             if self.disable_terminals:
@@ -442,6 +447,8 @@ class NFQCA(Controller):
 
             # Train network to output new target q values.
             batch.set_minibatch_size(minibatch_size).shuffle()
+
+            #breakpoint()
             self.critic.fit(
                 batch.statesactions_targets,
                 epochs=epochs,
