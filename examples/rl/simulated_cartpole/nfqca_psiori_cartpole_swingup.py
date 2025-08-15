@@ -39,6 +39,7 @@ NUM_EPISODE_STEPS = 400
 GAMMA = 0.98
 STACKING = 1            # history length. 1 = no stacking, just the current state.
 EPSILON = 0.1           # epsilon-greedy exploration
+EPSILON_SCALE = 1.0     # std of the normal distribution to be added to explorative actions
 
 
 DEFAULT_STEP_COST = 0.01
@@ -51,9 +52,9 @@ X_THRESHOLD = 3.6
 def make_actor(inputs, lookback):
     inp = tfkl.Input((inputs, lookback), name="state_actor")
     net = tfkl.Flatten()(inp)
-    net = tfkl.Dense(256, activation="relu")(net)
-    net = tfkl.Dense(256, activation="relu")(net)
-    net = tfkl.Dense(100, activation="relu")(net)
+    net = tfkl.Dense(25, activation="relu")(net)
+    net = tfkl.Dense(25, activation="relu")(net)
+#    net = tfkl.Dense(100, activation="relu")(net)
     net = tfkl.Dense(1, activation="tanh")(net)
     model = tf.keras.Model(inp, net, name="actor")
     model.summary()
@@ -64,9 +65,9 @@ def make_critic(inputs, lookback):
     inp = tfkl.Input((inputs, lookback), name="state_critic")
     act = tfkl.Input((1,), name="act_in")
     net = tfkl.Concatenate()([tfkl.Flatten()(inp), act])
-    net = tfkl.Dense(256, activation="relu")(net)
-    net = tfkl.Dense(256, activation="relu")(net)
-    net = tfkl.Dense(100, activation="tanh")(net)
+    net = tfkl.Dense(25, activation="relu")(net)
+ #   net = tfkl.Dense(256, activation="relu")(net)
+    net = tfkl.Dense(10, activation="tanh")(net)
     net = tfkl.Dense(1, activation="sigmoid")(net)
     model = tf.keras.Model([inp, act], net, name="critic")
     model.summary()
@@ -85,6 +86,7 @@ CART_POSITION_CHANNEL_IDX = state_channels.index("cart_position")
 COSINE_CHANNEL_IDX = state_channels.index("pole_cosine")
 
 def make_cost_function(x_threshold: float = 3.6,
+                       valid_angle: float = None,
                        position_idx=None,
                        cosine_idx=None) -> Callable[[np.ndarray], np.ndarray]:
     def cost_function(state: np.ndarray) -> np.ndarray:
@@ -105,11 +107,15 @@ def make_cost_function(x_threshold: float = 3.6,
         # VERY HIGH TERMINAL COSTS for leaving the track.
         costs[abs(position) >= x_threshold]       = TERMINAL_COST
 
+        if valid_angle is not None:
+            costs[np.arccos(cosine) > valid_angle] = DEFAULT_STEP_COST * 10
+
         return costs
 
     return cost_function
 
 cost_function = make_cost_function(x_threshold=X_THRESHOLD,
+                                   valid_angle=None, # np.pi/5.0,
                                    position_idx=CART_POSITION_CHANNEL_IDX,
                                    cosine_idx=COSINE_CHANNEL_IDX)
 
@@ -123,7 +129,8 @@ plant = CartPole(x_threshold=X_THRESHOLD,
                  cost_function=CartPole.cost_func_wrapper(
                      cost_function,
                      state_channels),
-                 start_angle=0.0)
+                 start_angle=0.0,
+                 valid_angle=None) # np.pi/4.0)
 
 
 def plot_swingup_state_history(
@@ -237,7 +244,7 @@ try:
     
     print(">>> MODEL LOADED from ", f"{EXPERIMENT_FOLDER}/model-latest.zip")
 
-    nfqca.exploration = RandomNormalNoise(size=1, std=1.0)
+    nfqca.exploration = RandomNormalNoise(size=1, std=0.5)
 
 except Exception as e:
     # Make the NFQ model
@@ -250,7 +257,7 @@ except Exception as e:
         state_channels=state_channels,
         action=ActionType,
         lookback=lookback,
-        exploration=RandomNormalNoise(size=1, std=1.0),
+        exploration=RandomNormalNoise(size=1, std=0.5),
         td3=False,  # TODO: double check if we want this
     )
     print(">>> MODEL could not be loaded, CREATED a new one")
@@ -266,9 +273,14 @@ min_avg_step_cost = 0.01  # if avg costs of an episode are less than 105% of thi
 fig = None
 do_eval = EVAL
 
+RAND_START_EPS = 0
+
 
 for i in range(NUM_EPISODES):
     loop.run(1, max_episode_steps=NUM_EPISODE_STEPS)
+
+    if i < RAND_START_EPS:
+        continue
 
     action_channels = (f"{ActionType.channels[0]}",)
     print(">>> action_channels: ", action_channels)
@@ -301,14 +313,14 @@ for i in range(NUM_EPISODES):
             nfqca.fit_critic(
                 batch,
                 costfunc=cost_function,
-                iterations=2,
-                epochs=8,
+                iterations=4,
+                epochs=20,
                 minibatch_size=-1, #8192,
                 gamma=GAMMA,
                 verbose=1,
             )
             nfqca.fit_actor(batch, 
-                            epochs=1, 
+                            epochs=100, 
                             minibatch_size=-1 #2048
                             )
 

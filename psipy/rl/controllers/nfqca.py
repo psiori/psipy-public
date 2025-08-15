@@ -171,16 +171,10 @@ class NFQCA(Controller):
         stacks = self.preprocess_observations(stacks)
         actions = self.actor(stacks).numpy()
 
-        print(f"actions: {actions}")
-
         if self.exploration:
             actions = self.exploration(actions)
 
-        print(f"actions after exploration: {actions}")
-
         actions = self.action_normalizer.inverse_transform(actions)
-
-        print(f"actions after inverse transform: {actions}")
 
         # Currently only a single action per stack-item is supported.
         actions = actions.ravel()
@@ -370,8 +364,8 @@ class NFQCA(Controller):
 
         self.critic_opt = tf.keras.optimizers.RMSprop(learning_rate=0.0001)
         self.actor_opt = tf.keras.optimizers.RMSprop(learning_rate=0.0001)
-        #self.critic_opt = tf.keras.optimizers.SGD(learning_rate=0.01) 
-        #self.actor_opt = tf.keras.optimizers.SGD(learning_rate=0.01)
+        # self.critic_opt = tf.keras.optimizers.SGD(learning_rate=0.0001) 
+        # self.actor_opt = tf.keras.optimizers.SGD(learning_rate=0.0001)
 
         #self.critic_opt = Rprop()
         #self.actor_opt = Rprop()
