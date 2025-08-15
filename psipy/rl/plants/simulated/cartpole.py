@@ -150,6 +150,7 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         action_type: Type[CartPoleAction] = CartPoleBangAction,
         render_mode: str = "human",
         do_not_reset: bool = False,
+        start_angle: float = None,
     ):
         if cost_function is None:
             cost_function = make_default_cost_function(x_threshold)
@@ -158,6 +159,7 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         super().__init__(cost_function=cost_function)
 
         self.renderable = True
+        self.start_angle = start_angle if start_angle is not None else np.pi
 
         self.do_not_reset = do_not_reset
 
@@ -274,7 +276,7 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         self.x_start = random.random() - 0.5  # 0.0  # random.random() * 3.4 - 1.7
         # If doing the sway control task, do not spawn near the middle
         x_dot = 0
-        theta = np.pi - (random.random() * 0.1 - 0.05)
+        theta = self.start_angle - (random.random() * 0.1 - 0.05)
         theta_dot = 0
         sin = math.sin(theta)
         cos = math.cos(theta)

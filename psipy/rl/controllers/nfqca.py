@@ -31,6 +31,9 @@ from psipy.rl.io.batch import Batch
 from psipy.rl.core.plant import State
 from psipy.rl.preprocessing import StackNormalizer
 
+from psipy.nn.optimizers.rprop import Rprop
+
+
 __all__ = ["NFQCA"]
 
 
@@ -168,10 +171,16 @@ class NFQCA(Controller):
         stacks = self.preprocess_observations(stacks)
         actions = self.actor(stacks).numpy()
 
+        print(f"actions: {actions}")
+
         if self.exploration:
             actions = self.exploration(actions)
 
+        print(f"actions after exploration: {actions}")
+
         actions = self.action_normalizer.inverse_transform(actions)
+
+        print(f"actions after inverse transform: {actions}")
 
         # Currently only a single action per stack-item is supported.
         actions = actions.ravel()
@@ -294,6 +303,8 @@ class NFQCA(Controller):
             inputs=common_state, outputs=chained_q, name="chained_critic"
         )
 
+
+
         def min_q(*args):
             return tf.reduce_min(chained_q)
 
@@ -338,12 +349,12 @@ class NFQCA(Controller):
         
         class CriticLoss(tf.keras.losses.Loss):
             def call(self, y_true, y_pred):
-                return tf.keras.losses.MeanSquaredError()(y_true, q1l)
+                return tf.keras.losses.MeanSquaredError()(y_true, q1)
 
         # Compile critic model, collecting trainable variables.
-        self._critic.compile(
-            optimizer=self.get_optimizer(),
-            loss=CriticLoss(), # critic_loss,
+        #self._critic.compile(
+        #    optimizer=self.get_optimizer(),
+        #    loss=CriticLoss(), # critic_loss,
             # metrics=[
             #     min_q,
             #     avg_q,
@@ -355,33 +366,41 @@ class NFQCA(Controller):
             #     avg_act,
             #     max_act,
             # ],
-        )
+        #)
+
+        self.critic_opt = tf.keras.optimizers.RMSprop(learning_rate=0.0001)
+        self.actor_opt = tf.keras.optimizers.RMSprop(learning_rate=0.0001)
+        #self.critic_opt = tf.keras.optimizers.SGD(learning_rate=0.01) 
+        #self.actor_opt = tf.keras.optimizers.SGD(learning_rate=0.01)
+
+        #self.critic_opt = Rprop()
+        #self.actor_opt = Rprop()
 
         # Make the actor only train actor variables, although the gradient is
         # computed through both the actor and the critic models. Note that this
         # has the effect of any layers which are shared between the critic and
         # the actor to only be trained by the actor!
         # critic_vars = self._critic.trainable_variables.copy()
-        for layer in self._critic.layers:
-            layer.trainable = False
+        #for layer in self._critic.layers:
+        #    layer.trainable = False
 
-        action_bounds = None
-        if self._actor.layers[-1].activation is tf.keras.activations.linear:
-            action_bounds = (-1, 1)
+        #action_bounds = None
+        #if self._actor.layers[-1].activation is tf.keras.activations.linear:
+        #    action_bounds = (-1, 1)
 
-        self._actor.compile(
-            optimizer=self.get_optimizer(action_bounds=action_bounds, actorcritic=True),
-            loss=lambda t, p: chained_q1,  # NOTE: Using output of q1 only, even in td3!
-            #metrics=[min_q, max_q, avg_q, min_act, avg_act, max_act],
-        )
+        #self._actor.compile(
+        #    optimizer=self.get_optimizer(action_bounds=action_bounds, actorcritic=True),
+        #    loss=lambda t, p: chained_q1,  # NOTE: Using output of q1 only, even in td3!
+        #    #metrics=[min_q, max_q, avg_q, min_act, avg_act, max_act],
+        #)
 
         # Make sure the critic's trainable variables are still the same as
         # before and reset the critic layers' trainable states to suppress
         # Keras' "trainable variable mismatch" warning.
         # NOTE: Incompatible with tf2
         # assert self._critic._collected_trainable_weights == critic_vars
-        for layer in self._critic.layers:
-            layer.trainable = True
+        #for layer in self._critic.layers:
+        #    layer.trainable = True
 
     @property
     def chained_critic(self) -> tf.keras.Model:
@@ -435,9 +454,16 @@ class NFQCA(Controller):
                 # output activations instead of `sigmoid`.
                 target_qs[terminals.ravel() == 1] = 1
             assert np.all(target_qs >= 0)
+
+            print(f"min target_qs: {np.min(target_qs)}")
+            print(f"max target_qs: {np.max(target_qs)}")
+            print(f"mean target_qs: {np.mean(target_qs)}")
+            print(f"std target_qs: {np.std(target_qs)}")
+
             target_qs = target_qs - np.min(target_qs)
-            target_qs = np.clip(target_qs + 0.05, 0.05, 0.95)
+            #target_qs = np.clip(target_qs + 0.05, 0.05, 0.95)
             batch.set_targets(target_qs)
+
 
             # In the original NFQ(CA), the network is reset between iterations,
             # while within each iteration it is trained to convergence from
@@ -449,13 +475,46 @@ class NFQCA(Controller):
             batch.set_minibatch_size(minibatch_size).shuffle()
 
             #breakpoint()
-            self.critic.fit(
-                batch.statesactions_targets,
-                epochs=epochs,
-                callbacks=callbacks,
-                **kwargs
+            #self.critic.fit(
+            #    batch.statesactions_targets,
+            #    epochs=epochs,
+            #    callbacks=callbacks,
+            #    **kwargs
                 # initial_epoch=(iteration - 1) * epochs,
-            )
+            #)
+
+
+        # Target actions and target Q
+        #na = self.actor_targ(ns)
+        #tq = self.critic_targ([ns, na])
+        # Bellman backup: y = r + gamma * (1 - done) * tq
+        #y = r + self.gamma * (1.0 - d) * tf.squeeze(tq, axis=-1)
+
+        #with tf.GradientTape() as tape:
+        #    q = tf.squeeze(self.critic([s, a]), axis=-1)
+        #    loss = self.mse(y, q)
+        #grads = tape.gradient(loss, self.critic.trainable_variables)
+        #self.critic_opt.apply_gradients(zip(grads, self.critic.#trainable_variables))
+        #return loss
+
+            self.mse = tf.keras.losses.MeanSquaredError()
+
+            for epoch in range(epochs):
+                for statesactions, targets, weights in batch.statesactions_targets:
+
+                    print (f"num samples: {len(statesactions[1])}")
+
+                    #breakpoint()
+                    with tf.GradientTape() as tape:
+                        q = tf.squeeze(self.critic(statesactions), axis=-1)
+                        loss = self.mse(targets, q)
+
+                    #breakpoint()
+
+                    grads = tape.gradient(loss, self.critic.trainable_variables)
+                    self.critic_opt.apply_gradients(zip(grads, self.critic.trainable_variables))    
+                    
+                    print(f"epoch {epoch} critic update with loss: {loss.numpy()}")
 
     def fit_actor(
         self,
@@ -483,10 +542,21 @@ class NFQCA(Controller):
             self.reset_actor()
 
         batch.set_minibatch_size(minibatch_size).shuffle()
-        history = self.actor.fit(
-            batch.states, epochs=epochs, callbacks=callbacks, **kwargs
-        )
-        return history.history
+
+        for epoch in range(epochs):
+            for s in batch.states:
+                with tf.GradientTape() as tape:
+                    a = self.actor(s)
+                    q = self.critic([s, a])
+                    # Minimize(!) Q ⇒ minimize mean Q, because we have costs
+                    loss = tf.reduce_mean(q)
+                grads = tape.gradient(loss, self.actor.trainable_variables)
+                self.actor_opt.apply_gradients(zip(grads, self.actor.trainable_variables))
+
+#        history = self.actor.fit(
+#            batch.states, epochs=epochs, callbacks=callbacks, **kwargs
+#        )
+#        return history.history
 
     def fit_normalizer(
         self, observations: np.ndarray, method: Optional[str] = None
