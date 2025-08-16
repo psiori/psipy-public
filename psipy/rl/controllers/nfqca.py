@@ -131,6 +131,8 @@ class NFQCA(Controller):
         self.get_actions(self._memory.stack[None, ...])
 
     def get_q(self, state: Optional[State] = None) -> np.ndarray:
+        breakpoint() # TODO implement this method using tape
+
         """Produces a single q value given a state.
 
         Args:
@@ -274,14 +276,16 @@ class NFQCA(Controller):
         critic = self._critic
 
         q1 = critic(common_state + [action_in])
-        chained_q1 = critic(common_state + [action_out])
+        #chained_q1 = critic(common_state + [action_out])
 
         # Keep q1 and chained_q1 for when td3 is enabled. q and chained_q is
         # overwritten by joined value if td3 is enabled.
         q = q1
-        chained_q = chained_q1
+        #chained_q = chained_q1
 
         if self.td3:
+            #breakpoint() # TODO implement this method using tape
+
             # TD3 uses two q networks instead of one, always taking the "worse"
             # expectation in order to not overestimate state value.
             critic2 = clone_model(self._critic, name="critic2")
@@ -290,14 +294,14 @@ class NFQCA(Controller):
             chained_q2 = critic2([common_state, action_out])
             chained_q = tfkl.maximum([chained_q, chained_q2])  # q target
 
-        self._critic = tf.keras.models.Model(
-            inputs=common_state + [action_in], outputs=q
-        )
-        self._chained_critic = tf.keras.models.Model(
-            inputs=common_state, outputs=chained_q, name="chained_critic"
-        )
+        #self._critic = tf.keras.models.Model(
+        #    inputs=common_state + [action_in], outputs=q
+        #)
+        #self._chained_critic = tf.keras.models.Model(
+        #    inputs=common_state, outputs=chained_q, name="chained_critic"
+        #)
 
-
+        self._chained_critic = True 
 
         def min_q(*args):
             return tf.reduce_min(chained_q)
@@ -332,19 +336,15 @@ class NFQCA(Controller):
         def max_act_in(*args):
             return tf.reduce_max(action_in)
 
-        def critic_loss(q_targets: tf.Tensor, q: tf.Tensor) -> tf.Tensor:
-            """Compute the mse appropriate for td3 or non-td3 mode."""
-            Loss = tf.keras.losses.MeanSquaredError
+        #def critic_loss(q_targets: tf.Tensor, q: tf.Tensor) -> tf.Tensor:
+        #    """Compute the mse appropriate for td3 or non-td3 mode."""
+            #Loss = tf.keras.losses.MeanSquaredError
             # Loss = tf.keras.losses.Huber
-            mse = Loss()(q_targets, q1)
-            if self.td3:
-                mse = mse + Loss()(q_targets, q2)
-            return mse
+         #   mse = Loss()(q_targets, q1)
+         #   if self.td3:
+         #       mse = mse + Loss()(q_targets, q2)
+         #   return mse
         
-        class CriticLoss(tf.keras.losses.Loss):
-            def call(self, y_true, y_pred):
-                return tf.keras.losses.MeanSquaredError()(y_true, q1)
-
         # Compile critic model, collecting trainable variables.
         #self._critic.compile(
         #    optimizer=self.get_optimizer(),
@@ -362,10 +362,13 @@ class NFQCA(Controller):
             # ],
         #)
 
-        self.critic_opt = tf.keras.optimizers.RMSprop(learning_rate=0.0001)
-        self.actor_opt = tf.keras.optimizers.RMSprop(learning_rate=0.0001)
-        # self.critic_opt = tf.keras.optimizers.SGD(learning_rate=0.0001) 
-        # self.actor_opt = tf.keras.optimizers.SGD(learning_rate=0.0001)
+        #self.critic_opt = tf.keras.optimizers.RMSprop(learning_rate=0.0001)
+        #self.actor_opt = tf.keras.optimizers.RMSprop(learning_rate=0.0001)
+        #self.critic_opt = tf.keras.optimizers.SGD(learning_rate=0.0001) 
+        #self.actor_opt = tf.keras.optimizers.SGD(learning_rate=0.0001)
+        self.critic_opt = tf.keras.optimizers.Adam(learning_rate=0.0001) 
+        self.actor_opt = tf.keras.optimizers.Adam(learning_rate=0.0001)
+
 
         #self.critic_opt = Rprop()
         #self.actor_opt = Rprop()
@@ -440,9 +443,12 @@ class NFQCA(Controller):
             batch.set_minibatch_size(-1).sort()
 
             #breakpoint()
-            qs = self.chained_critic(batch.nextstates[0]).numpy().ravel()
+            a = self.actor(batch.nextstates[0])
+            qs = self.critic([batch.nextstates[0], a])
+
+            #qs = self.chained_critic(batch.nextstates[0]).numpy().ravel()
             costs, terminals = batch.costs_terminals[0]
-            target_qs = costs.ravel() + gamma * qs
+            target_qs = costs.ravel() + gamma * tf.squeeze(qs, axis=-1)  # TODO: move both to tf (or stay in numpy?? --> copy is slow)
             if self.disable_terminals:
                 # The following should use np.max(qs) when the model uses `relu`
                 # output activations instead of `sigmoid`.
@@ -454,7 +460,9 @@ class NFQCA(Controller):
             print(f"mean target_qs: {np.mean(target_qs)}")
             print(f"std target_qs: {np.std(target_qs)}")
 
-            target_qs = target_qs - np.min(target_qs)
+            #breakpoint()
+
+            #target_qs = target_qs - np.min(target_qs)
             #target_qs = np.clip(target_qs + 0.05, 0.05, 0.95)
             batch.set_targets(target_qs)
 
