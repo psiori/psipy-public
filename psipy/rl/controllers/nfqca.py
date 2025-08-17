@@ -366,8 +366,8 @@ class NFQCA(Controller):
         #self.actor_opt = tf.keras.optimizers.RMSprop(learning_rate=0.0001)
         #self.critic_opt = tf.keras.optimizers.SGD(learning_rate=0.0001) 
         #self.actor_opt = tf.keras.optimizers.SGD(learning_rate=0.0001)
-        self.critic_opt = tf.keras.optimizers.Adam(learning_rate=0.0001) 
-        self.actor_opt = tf.keras.optimizers.Adam(learning_rate=0.0001)
+        self.critic_opt = tf.keras.optimizers.Adam(learning_rate=0.001) 
+        self.actor_opt = tf.keras.optimizers.Adam(learning_rate=0.001)
 
 
         #self.critic_opt = Rprop()
@@ -448,7 +448,7 @@ class NFQCA(Controller):
 
             #qs = self.chained_critic(batch.nextstates[0]).numpy().ravel()
             costs, terminals = batch.costs_terminals[0]
-            target_qs = costs.ravel() + gamma * tf.squeeze(qs, axis=-1)  # TODO: move both to tf (or stay in numpy?? --> copy is slow)
+            target_qs = costs.ravel() + gamma * tf.squeeze(qs, axis=-1)  # TODO: move both to tf (or stay in numpy?? --> copy is slow), * (1 - terminals)
             if self.disable_terminals:
                 # The following should use np.max(qs) when the model uses `relu`
                 # output activations instead of `sigmoid`.
@@ -464,6 +464,8 @@ class NFQCA(Controller):
 
             #target_qs = target_qs - np.min(target_qs)
             #target_qs = np.clip(target_qs + 0.05, 0.05, 0.95)
+            target_qs = np.clip(target_qs, 0.0, 0.995)  
+
             batch.set_targets(target_qs)
 
 
@@ -506,14 +508,25 @@ class NFQCA(Controller):
 
                     print (f"num samples: {len(statesactions[1])}")
 
+                    st = tf.convert_to_tensor(statesactions[0], dtype=tf.float32)
+                    at = tf.convert_to_tensor(statesactions[1], dtype=tf.float32)
+                    tt = tf.convert_to_tensor(targets, dtype=tf.float32)
+
                     #breakpoint()
                     with tf.GradientTape() as tape:
-                        q = tf.squeeze(self.critic(statesactions), axis=-1)
-                        loss = self.mse(targets, q)
+                        #breakpoint()
+                        q = self.critic([st, at])
+                        assert len(q) == len(tt)
+                        assert len(q[0]) == 1
+                        assert len(tt[0]) == 1
+                        assert tt.shape == q.shape
+
+                        loss = self.mse(tt, q)  # this assumes, both are of dims Nx1, not just N, thus, targets are warpped in 1d arrays
 
                     #breakpoint()
 
                     grads = tape.gradient(loss, self.critic.trainable_variables)
+
                     self.critic_opt.apply_gradients(zip(grads, self.critic.trainable_variables))    
                     
                     print(f"epoch {epoch} critic update with loss: {loss.numpy()}")
@@ -554,6 +567,9 @@ class NFQCA(Controller):
                     loss = tf.reduce_mean(q)
                 grads = tape.gradient(loss, self.actor.trainable_variables)
                 self.actor_opt.apply_gradients(zip(grads, self.actor.trainable_variables))
+
+                print(f"epoch {epoch} actor update with mean q: {loss.numpy()}")
+
 
 #        history = self.actor.fit(
 #            batch.states, epochs=epochs, callbacks=callbacks, **kwargs

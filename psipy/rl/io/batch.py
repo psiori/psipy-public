@@ -376,7 +376,7 @@ class Batch(KSequence):
         "states_actions",
         "states_costs",
         "states_targets",
-        "targets",
+    #    "targets",
     )
 
     _episodes: List[Episode]
@@ -548,11 +548,11 @@ class Batch(KSequence):
             assert np.all(targets >= 0)
             states = self.preprocess_stacks(stacks[..., :-1])
             return states, targets
-        if self._mode == "targets":
-            assert hasattr(self, "_targets"), "Targets need to be set before get."
-            targets = self._targets[indices]
-            assert np.all(targets >= 0)
-            return targets
+#        if self._mode == "targets":
+#            assert hasattr(self, "_targets"), "Targets need to be set before get."
+#            targets = self._targets[indices]
+#            assert np.all(targets >= 0)
+#            return targets
     
         raise ValueError("Bad mode")
 
