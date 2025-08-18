@@ -27,6 +27,78 @@ from psipy.rl.plants.simulated.knob import (
 from psipy.rl.visualization.metrics import RLMetricsPlot
 from psipy.rl.visualization.plotting_callback import PlottingCallback
 
+def plot_knob_state_history(
+    episode: Optional[Episode],
+    state_channels: List[str],
+    filename: Optional[str] = None,
+    episode_num: Optional[int] = None,
+) -> None:
+    """Creates a plot that details the controller behavior for the knob.
+
+    The plot contains 3 subplots:
+
+    1. Knob position in degrees [-180, 180]
+    2. Action from the controller (turn value)
+    3. Immediate costs over time
+
+    Args:
+        episode: The episode to plot
+        state_channels: List of state channel names
+        filename: If given, will save the plot to this file
+        episode_num: Episode number for the title
+
+    """
+    if episode is None:
+        return
+
+    position = episode.observations[:, state_channels.index("position")]
+    actions = episode._actions[:, 0]
+    costs = episode.costs
+        
+    figure = plt.figure(0, figsize=(10, 8))
+    figure.clear()
+
+    axes = figure.subplots(3)
+
+    # Plot 1: Knob position
+    axes[0].plot(position, label="knob_position", color='blue')
+    axes[0].axhline(0, color="red", linestyle="--", label="target (0°)")
+    axes[0].set_title("Knob Position")
+    axes[0].set_ylabel("Position (degrees)")
+    axes[0].set_ylim((-180, 180))
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+
+    # Plot 2: Actions
+    axes[1].plot(actions, label="turn_action", color='green')
+    axes[1].axhline(0, color="grey", linestyle=":", label="no action")
+    axes[1].set_title("Control Actions")
+    axes[1].set_ylabel("Turn Value")
+    axes[1].set_ylim((-2.0, 2.0))
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+
+    # Plot 3: Costs
+    axes[2].plot(costs, label="immediate_cost", color='red')
+    axes[2].set_title("Immediate Costs")
+    axes[2].set_ylabel("Cost")
+    axes[2].set_xlabel("Time Steps")
+    axes[2].set_ylim((0.0, 0.01))
+    axes[2].legend()
+    axes[2].grid(True, alpha=0.3)
+
+    if episode_num is None:
+        figure.suptitle("NFQ-S Controller on Knob")
+    else:
+        figure.suptitle(f"NFQ-S Controller on Knob, Episode {episode_num}")
+    
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    if filename:
+        figure.savefig(filename)
+        plt.close(figure)
+    else:
+        figure.show()
+
 # Define where we want to save our SART files
 EXPERIMENT_FOLDER = "experiment-nfqs-knob"
 SART_FOLDER = f"{EXPERIMENT_FOLDER}/psidata-sart-knob"
@@ -36,7 +108,7 @@ RENDER = True
 EVAL = True
 
 NUM_EPISODES = 400
-NUM_EPISODE_STEPS = 100
+NUM_EPISODE_STEPS = 200
 GAMMA = 0.98
 STACKING = 1            # history length. 1 = no stacking, just the current state.
 EPSILON = 0.2           # epsilon-greedy exploration
@@ -51,7 +123,6 @@ def make_model(n_inputs, lookback):
     act = tfkl.Input((1,), name="actions")
     net = tfkl.Flatten()(inp)
     net = tfkl.concatenate([act, net])
-    # net = tfkl.Dense(n_inputs * lookback * 20, activation="relu")(net) # add this layer if you remove velocities from the state
     net = tfkl.Dense(256, activation="relu")(net)
     net = tfkl.Dense(256, activation="relu")(net)
     net = tfkl.Dense(100, activation="tanh")(net)
@@ -132,6 +203,13 @@ for i in range(NUM_EPISODES):
         lookback=lookback,
         control=nfq,
     )
+
+    filename = f"{PLOT_FOLDER}/knob_latest_episode-{len(batch._episodes)}.png"
+
+    plot_knob_state_history(batch._episodes[len(batch._episodes)-1],
+                           state_channels=state_channels,
+                           filename=filename,
+                           episode_num=len(batch._episodes))
     
     print(">>> num episodes in batch: ", len(batch._episodes))
     
@@ -169,6 +247,22 @@ for i in range(NUM_EPISODES):
         nfq.epsilon = 0.0
         eval_loop.run(1, max_episode_steps=NUM_EPISODE_STEPS)
         nfq.epsilon = old_epsilon
+
+        # Create evaluation batch and plot
+        eval_batch = Batch.from_hdf5(
+            f"{SART_FOLDER}-eval",
+            action_channels=action_channels,
+            state_channels=state_channels,
+            lookback=lookback,
+            control=nfq,
+        )
+
+        eval_filename = f"{PLOT_FOLDER}/knob_eval_episode-{len(batch._episodes)}.png"
+
+        plot_knob_state_history(eval_batch._episodes[len(eval_batch._episodes)-1],
+                               state_channels=state_channels,
+                               filename=eval_filename,
+                               episode_num=len(batch._episodes))
 
         episode_metrics = eval_loop.metrics[1] # only one episode was run
 

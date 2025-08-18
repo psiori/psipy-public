@@ -14,6 +14,7 @@ from tensorflow.keras import layers as tfkl
 import numpy as np
 
 from psipy.rl.controllers.nfqca import NFQCA
+from psipy.rl.controllers.nfqs import NFQs
 from psipy.rl.controllers.noise import RandomNormalNoise
 from psipy.rl.io.batch import Batch, Episode
 from psipy.rl.io.sart import SARTReader
@@ -113,7 +114,9 @@ NUM_EPISODE_STEPS = 400
 GAMMA = 0.98
 STACKING = 1            # history length. 1 = no stacking, just the current state.
 EPSILON = 0.1           # epsilon-greedy exploration
-EPSILON_SCALE = 0.1     # std of the normal distribution to be added to explorative actions
+EPSILON_SCALE = 0.2     # std of the normal distribution to be added to explorative actions
+
+LOAD_NFQ_CRITIC = False
 
 
 # Create actor and critic models based on state, action shapes and lookback
@@ -121,8 +124,8 @@ EPSILON_SCALE = 0.1     # std of the normal distribution to be added to explorat
 def make_actor(inputs, lookback):
     inp = tfkl.Input((inputs, lookback), name="state_actor")
     net = tfkl.Flatten()(inp)
-    net = tfkl.Dense(10, activation="relu")(net)
-   # net = tfkl.Dense(100, activation="relu")(net)
+    net = tfkl.Dense(100, activation="relu")(net)
+    net = tfkl.Dense(100, activation="relu")(net)
     net = tfkl.Dense(10, activation="tanh")(net)
     net = tfkl.Dense(1, activation="tanh")(net)
     model = tf.keras.Model(inp, net, name="actor")
@@ -192,6 +195,15 @@ except Exception as e:
     print(">>> MODEL could not be loaded, CREATED a new one")
 
 
+if LOAD_NFQ_CRITIC:
+    model_file = f"{EXPERIMENT_FOLDER}/model-nfq-critic.zip"
+    nfq = NFQs.load(model_file)
+
+    nfqca._critic = nfq._model
+    nfqca.normalizer = nfq.normalizer
+
+
+
 loop = Loop(plant, nfqca, "simulated.knob.Knob", SART_FOLDER, render=RENDER)
 eval_loop = Loop(plant, nfqca, "simulated.knob.Knob", f"{SART_FOLDER}-eval", render=RENDER)
 
@@ -225,27 +237,30 @@ for i in range(NUM_EPISODES):
     print(">>> num episodes in batch: ", len(batch._episodes))
     
     # Fit the normalizer
-    if (i < 10 or i % 10 == 0) and i < NUM_EPISODES / 2:
+    if (i < 10 or i % 10 == 0) and i < NUM_EPISODES / 2 and not LOAD_NFQ_CRITIC:
         nfqca.fit_normalizer(batch.observations, method="std")
 
     try:
         for iterations in range(1):
             # Fit the controller
-            nfqca.fit_critic(
-                batch,
-                iterations=2,
-                epochs=10,
-                minibatch_size=-1,
-                gamma=GAMMA,
-                verbose=1,
-            )
+
+            if True or not LOAD_NFQ_CRITIC:
+                nfqca.fit_critic(
+                    batch,
+                    iterations=2,
+                    epochs=8,
+                    minibatch_size=4000,
+                    gamma=GAMMA,
+                    verbose=1,
+                )
+        
 
             # nfqca.reset_actor() # might not work anymore because of the new tf version. thus, we just re-create the actor model from scratch: 
             # nfqca._actor = make_actor(len(state_channels), lookback=lookback)
 
             nfqca.fit_actor(batch, 
-                            epochs=10, 
-                            minibatch_size=-1, # 500
+                            epochs=1, 
+                            minibatch_size=500
                             )
 
         nfqca.save(f"{EXPERIMENT_FOLDER}/model-latest-saving")  # this is always saved to allow to continue training after interrupting (and potentially changing) the script
