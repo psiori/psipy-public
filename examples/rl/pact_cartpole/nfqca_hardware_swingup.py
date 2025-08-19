@@ -31,7 +31,7 @@ EXPERIMENT_FOLDER = "experiment-nfqca-cartpole"
 SART_FOLDER = f"{EXPERIMENT_FOLDER}/psidata-sart-cartpole"
 PLOT_FOLDER = f"{EXPERIMENT_FOLDER}/plots"
 
-RENDER = True
+RENDER = False 
 EVAL = True
 
 NUM_EPISODES = 400
@@ -39,7 +39,7 @@ NUM_EPISODE_STEPS = 400
 GAMMA = 0.98
 STACKING = 1            # history length. 1 = no stacking, just the current state.
 EPSILON = 0.1           # epsilon-greedy exploration
-EPSILON_SCALE = 0.5     # std of the normal distribution to be added to explorative actions
+EPSILON_SCALE = 2.0     # std of the normal distribution to be added to explorative actions
 
 STACKING = 6
 
@@ -136,7 +136,7 @@ ActionType = SwingupContinuousAction
 StateType = SwingupState
 
 plant = SwingupPlant(
-    hostname="192.168.2.171",
+    hostname="127.0.0.1",
     hilscher_port=5555,
     sway_start=False,
     cost_function=SwingupPlant.cost_func_wrapper(
