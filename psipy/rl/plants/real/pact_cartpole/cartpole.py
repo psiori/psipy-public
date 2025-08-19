@@ -255,6 +255,7 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         self.comms_initialized = False
         # self.ctx = zmq.Context()
         self.hostname = hostname
+        print("HOSTNAME DONE", self.hostname)
         # if not self.setup_config_subscription(command_port):
         #     LOG.warning("Subscribing to cmd socket failed; stop script manually.")
         self.comms = HardwareComms(hostname, hilscher_port)
@@ -334,9 +335,13 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
     def initialize_comms(self) -> None:
         """Start zmq comms and set up initial parameters."""
         self.comms.send(Commands.RESET_ALL)
+        print("INITIALIZE COMMS SEND RESET ALL DONE")
         self.comms.receive()
+        print("INITIALIZE COMMS RECEIVE DONE")
         self.comms.send(Commands.HERTZ, self.ACTION_DELAY * 1000)
+        print("INITIALIZE COMMS SEND HERTZ DONE")
         self.comms.receive()
+        print("INITIALIZE COMMS RECEIVE DONE")
         self.set_speeds(self.speeds)
 
     def assert_continue_run(self) -> None:
@@ -515,6 +520,7 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         #TODO I added the dist stops, added reset params, and slowed down the operator to 150 from 250
 
     def check_initial_state(self, state: Optional[SwingupState]) -> SwingupState:
+        print("CHECKING INITIAL STATE")
         self.assert_continue_run()
         assert self.episode_steps == 0
         self.comms.send_NOOP()  # need to send to receive
@@ -827,13 +833,17 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         return
 
     def notify_episode_starts(self) -> bool:
+        print("NOTIFYING EPISODE STARTS")
         self.assert_continue_run()
         super().notify_episode_starts()
         self.df_history = pd.DataFrame(columns=SwingupState.channels()) # SL: reset data for plotting
 
         self.comms.notify_episode_starts()
+        print("NOTIFYING EPISODE STARTS NOTIFY EPISODE STARTS DONE")
         self.initialize_comms()
+        print("NOTIFYING EPISODE STARTS INITIALIZE COMMS DONE")
         self.get_ready()
+        print("NOTIFYING EPISODE STARTS GET READY DONE")
         if self.sway_start:
             # Goal position is tested for > .5 to determine
             # left or right goals; it stays static throughout
@@ -857,6 +867,8 @@ class SwingupPlant(Plant[SwingupState, SwingupContinuousDiscreteAction]):
         # for i in list(range(0,4)[::-1]):
         #     print(f"{i}\t{i}\t{i}\t{i}\t{i}\t{i}\t{i}")
         #     time.sleep(1)
+
+        print("NOTIFYING EPISODE STARTS DONE")
         return True
 
     def notify_episode_stops(self) -> bool:

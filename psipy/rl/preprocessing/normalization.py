@@ -100,6 +100,8 @@ class StackNormalizer(Saveable):
             raise ValueError("Normalizer must be fit first to alter an axis.")
 
         shape = data.shape
+        print("DATA SHAPE", data.shape)
+        print("AXIS", axis)
         if axis is None:
             if len(data.shape) < 2:
                 raise ValueError('Data needs to have a "Batch" dimension.')
@@ -139,6 +141,10 @@ class StackNormalizer(Saveable):
         else:
             self._center = center
             self._scale = scale
+
+        print("CENTER", self._center)
+        print("SCALE", self._scale)
+        
         return self
 
     def set(

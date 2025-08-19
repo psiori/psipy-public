@@ -376,6 +376,7 @@ class Batch(KSequence):
         "states_actions",
         "states_costs",
         "states_targets",
+    #    "targets",
     )
 
     _episodes: List[Episode]
@@ -547,6 +548,12 @@ class Batch(KSequence):
             assert np.all(targets >= 0)
             states = self.preprocess_stacks(stacks[..., :-1])
             return states, targets
+#        if self._mode == "targets":
+#            assert hasattr(self, "_targets"), "Targets need to be set before get."
+#            targets = self._targets[indices]
+#            assert np.all(targets >= 0)
+#            return targets
+    
         raise ValueError("Bad mode")
 
     def on_epoch_end(self) -> None:
@@ -742,6 +749,11 @@ class Batch(KSequence):
     @property
     def states_targets(self):
         self._mode = "states_targets"
+        return self
+
+    @property
+    def targets(self):
+        self._mode = "targets"
         return self
 
     @property

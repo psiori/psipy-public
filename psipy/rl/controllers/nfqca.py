@@ -31,6 +31,9 @@ from psipy.rl.io.batch import Batch
 from psipy.rl.core.plant import State
 from psipy.rl.preprocessing import StackNormalizer
 
+from psipy.nn.optimizers.rprop import Rprop
+
+
 __all__ = ["NFQCA"]
 
 
@@ -128,6 +131,8 @@ class NFQCA(Controller):
         self.get_actions(self._memory.stack[None, ...])
 
     def get_q(self, state: Optional[State] = None) -> np.ndarray:
+        breakpoint() # TODO implement this method using tape
+
         """Produces a single q value given a state.
 
         Args:
@@ -269,15 +274,18 @@ class NFQCA(Controller):
         # action_out = ClipLayer(-1, 1)(action_out)
 
         critic = self._critic
+
         q1 = critic(common_state + [action_in])
-        chained_q1 = critic(common_state + [action_out])
+        #chained_q1 = critic(common_state + [action_out])
 
         # Keep q1 and chained_q1 for when td3 is enabled. q and chained_q is
         # overwritten by joined value if td3 is enabled.
         q = q1
-        chained_q = chained_q1
+        #chained_q = chained_q1
 
         if self.td3:
+            #breakpoint() # TODO implement this method using tape
+
             # TD3 uses two q networks instead of one, always taking the "worse"
             # expectation in order to not overestimate state value.
             critic2 = clone_model(self._critic, name="critic2")
@@ -286,12 +294,14 @@ class NFQCA(Controller):
             chained_q2 = critic2([common_state, action_out])
             chained_q = tfkl.maximum([chained_q, chained_q2])  # q target
 
-        self._critic = tf.keras.models.Model(
-            inputs=common_state + [action_in], outputs=q
-        )
-        self._chained_critic = tf.keras.models.Model(
-            inputs=common_state, outputs=chained_q, name="chained_critic"
-        )
+        #self._critic = tf.keras.models.Model(
+        #    inputs=common_state + [action_in], outputs=q
+        #)
+        #self._chained_critic = tf.keras.models.Model(
+        #    inputs=common_state, outputs=chained_q, name="chained_critic"
+        #)
+
+        self._chained_critic = True 
 
         def min_q(*args):
             return tf.reduce_min(chained_q)
@@ -326,57 +336,68 @@ class NFQCA(Controller):
         def max_act_in(*args):
             return tf.reduce_max(action_in)
 
-        def critic_loss(q_targets: tf.Tensor, q: tf.Tensor) -> tf.Tensor:
-            """Compute the mse appropriate for td3 or non-td3 mode."""
-            Loss = tf.keras.losses.MeanSquaredError
+        #def critic_loss(q_targets: tf.Tensor, q: tf.Tensor) -> tf.Tensor:
+        #    """Compute the mse appropriate for td3 or non-td3 mode."""
+            #Loss = tf.keras.losses.MeanSquaredError
             # Loss = tf.keras.losses.Huber
-            mse = Loss()(q_targets, q1)
-            if self.td3:
-                mse = mse + Loss()(q_targets, q2)
-            return mse
-
+         #   mse = Loss()(q_targets, q1)
+         #   if self.td3:
+         #       mse = mse + Loss()(q_targets, q2)
+         #   return mse
+        
         # Compile critic model, collecting trainable variables.
-        self._critic.compile(
-            optimizer=self.get_optimizer(),
-            loss=critic_loss,
-            metrics=[
-                min_q,
-                avg_q,
-                max_q,
-                min_act_in,
-                avg_act_in,
-                max_act_in,
-                min_act,
-                avg_act,
-                max_act,
-            ],
-        )
+        #self._critic.compile(
+        #    optimizer=self.get_optimizer(),
+        #    loss=CriticLoss(), # critic_loss,
+            # metrics=[
+            #     min_q,
+            #     avg_q,
+            #     max_q,
+            #     min_act_in,
+            #     avg_act_in,
+            #     max_act_in,
+            #     min_act,
+            #     avg_act,
+            #     max_act,
+            # ],
+        #)
+
+        #self.critic_opt = tf.keras.optimizers.RMSprop(learning_rate=0.0001)
+        #self.actor_opt = tf.keras.optimizers.RMSprop(learning_rate=0.0001)
+        #self.critic_opt = tf.keras.optimizers.SGD(learning_rate=0.0001) 
+        #self.actor_opt = tf.keras.optimizers.SGD(learning_rate=0.0001)
+        self.critic_opt = tf.keras.optimizers.Adam(learning_rate=0.0001) 
+        self.actor_opt = tf.keras.optimizers.Adam(learning_rate=0.0001)
+
+
+        #self.critic_opt = Rprop()
+        #self.actor_opt = Rprop()
 
         # Make the actor only train actor variables, although the gradient is
         # computed through both the actor and the critic models. Note that this
         # has the effect of any layers which are shared between the critic and
         # the actor to only be trained by the actor!
         # critic_vars = self._critic.trainable_variables.copy()
-        for layer in self._critic.layers:
-            layer.trainable = False
+        #for layer in self._critic.layers:
+        #    layer.trainable = False
 
-        action_bounds = None
-        if self._actor.layers[-1].activation is tf.keras.activations.linear:
-            action_bounds = (-1, 1)
+        #action_bounds = None
+        #if self._actor.layers[-1].activation is tf.keras.activations.linear:
+        #    action_bounds = (-1, 1)
 
-        self._actor.compile(
-            optimizer=self.get_optimizer(action_bounds=action_bounds, actorcritic=True),
-            loss=lambda t, p: chained_q1,  # NOTE: Using output of q1 only, even in td3!
-            metrics=[min_q, max_q, avg_q, min_act, avg_act, max_act],
-        )
+        #self._actor.compile(
+        #    optimizer=self.get_optimizer(action_bounds=action_bounds, actorcritic=True),
+        #    loss=lambda t, p: chained_q1,  # NOTE: Using output of q1 only, even in td3!
+        #    #metrics=[min_q, max_q, avg_q, min_act, avg_act, max_act],
+        #)
 
         # Make sure the critic's trainable variables are still the same as
         # before and reset the critic layers' trainable states to suppress
         # Keras' "trainable variable mismatch" warning.
         # NOTE: Incompatible with tf2
         # assert self._critic._collected_trainable_weights == critic_vars
-        for layer in self._critic.layers:
-            layer.trainable = True
+        #for layer in self._critic.layers:
+        #    layer.trainable = True
 
     @property
     def chained_critic(self) -> tf.keras.Model:
@@ -400,15 +421,65 @@ class NFQCA(Controller):
         iterations: int = 1,
         epochs: int = 1,
         minibatch_size: int = -1,
-        gamma: float = 0.99,
-        # autostop: bool = False,
+        gamma: float = 0.98,
         callbacks: Optional[List] = None,
         reset_between_iterations: bool = False,
+        clip_targets_top: bool = True,
+        clip_targets_bottom: bool = False,
+        use_qmin_trick: bool = False,
         **kwargs,
     ) -> None:
         """Fits the critic model.
 
         Args:
+            gamma: Discount factor. Contradicting the belief of others in the
+                field, we believe in pragamaticaly using a gamma well below 1,
+                although this may lead to sub-optimal control policies, e.g. 
+                in shortest path to goal settings. In our experience, a gamma < 
+                1.0 helps a lot regarding stability and robustness over a 
+                variaty of tasks and parameter settings, especially in the 
+                beginning of the training process, where q-values in the goal 
+                area are most likely to be overestimated. We choose a value of 
+                0.98 as standard, which in the limit results in a maximum of 50 
+                x the default_step costs as expected future costs. This should 
+                be kept in mind as a guidance what length of lookahead can be 
+                expected and also when chosing the default step cost in such a 
+                such a way the future cost estimate is bounded below 1.0. We 
+                have good experience with increasing gamma towards 1.0 later in 
+                the training process for achieving longer lookaheads and 
+                assuring optimal control policies. If necessary for stability, 
+                this can be done in several steps distributed over the training 
+                procedure. In our experience, this approach does not lead to 
+                any negative effects in the quality of the final control policy.
+            clip_targets_top: Whether to clip targets at 0.95 to prevent the   
+                optimizer from pushing the weights too far into approximating a 
+                1.
+                This method was sugested by R. Hafner in "Dateneffiziente 
+                selbstlernende neuronale Regler", 2009. In our experience, this 
+                can be switched on without negative effects, positive effects 
+                in this more modern implemenation are presently unclear.
+            clip_targets_bottom: Whether to clip targets at 0.05 to prevent the 
+                optimizer from pushing the weights too far into approximating a 
+                0. This seems to have negative effects, with our standard 
+                modelling of zero-costs in the goal region. Do not use without 
+                good reason and comparison with the default setting.
+            qmin: Whether to use the q-min trick also suugested by R. Hafner in 
+                "Dateneffiziente selbstlernende neuronale Regler" 2009 to 
+                improve stability. This will deduct the minimum q-target value 
+                from all q-targets to "pull" the targets towards zero. From our 
+                preliminary experience this is not necessary on systems like    
+                the cartpole, but it sometimes quickly helps to "pull" a 
+                network with random initial high estimates of the goal states 
+                to zero. Where the algorithm might need dozens to hundreds of 
+                iterations to pull the network down to zero, switching this on 
+                for just one or two iterations can help immediately improve 
+                estimates in the critic. Whether this has really a positive 
+                effect on the actor and the overall learning time needed is 
+                unclear for now. Please note, that we have never seen a network 
+                to "diverge" (q-target values to run away, by constantly 
+                increasing everywhere) in practice with modern weight 
+                initialization and optimizers, iff using a gamma well below 1.
+
             **kwargs: Arguments going to ``keras.model.fit()``.
                       Example: ``verbose=0`` to suppress keras output
         """
@@ -420,17 +491,38 @@ class NFQCA(Controller):
         for _iteration in range(1, iterations + 1):
             # Compute target qs using the next states' predicted q values and bellman.
             batch.set_minibatch_size(-1).sort()
-            qs = self.chained_critic(batch.nextstates).numpy().ravel()
+
+            #breakpoint()
+            a = self.actor(batch.nextstates[0])
+            qs = self.critic([batch.nextstates[0], a])
+
+            #qs = self.chained_critic(batch.nextstates[0]).numpy().ravel()
             costs, terminals = batch.costs_terminals[0]
-            target_qs = costs.ravel() + gamma * qs
+            target_qs = costs.ravel() + gamma * tf.squeeze(qs, axis=-1)  # TODO: move both to tf (or stay in numpy?? --> copy is slow), * (1 - terminals)
             if self.disable_terminals:
                 # The following should use np.max(qs) when the model uses `relu`
                 # output activations instead of `sigmoid`.
                 target_qs[terminals.ravel() == 1] = 1
             assert np.all(target_qs >= 0)
-            target_qs = target_qs - np.min(target_qs)
-            target_qs = np.clip(target_qs + 0.05, 0.05, 0.95)
+
+            print(f"min target_qs: {np.min(target_qs)}")
+            print(f"max target_qs: {np.max(target_qs)}")
+            print(f"mean target_qs: {np.mean(target_qs)}")
+            print(f"std target_qs: {np.std(target_qs)}")
+
+            #breakpoint()
+
+            if use_qmin_trick:
+                target_qs = target_qs - np.min(target_qs)
+            if clip_targets_top and clip_targets_bottom:
+                target_qs = np.clip(target_qs + 0.05, 0.05, 0.95)
+            if clip_targets_top:
+                target_qs = np.clip(target_qs, 0.0, 0.995)  
+            if clip_targets_bottom:
+                target_qs = np.clip(target_qs + 0.05, 0.05, 1.0)
+
             batch.set_targets(target_qs)
+
 
             # In the original NFQ(CA), the network is reset between iterations,
             # while within each iteration it is trained to convergence from
@@ -440,13 +532,59 @@ class NFQCA(Controller):
 
             # Train network to output new target q values.
             batch.set_minibatch_size(minibatch_size).shuffle()
-            self.critic.fit(
-                batch.statesactions_targets,
-                epochs=epochs,
-                callbacks=callbacks,
-                **kwargs
+
+            #breakpoint()
+            #self.critic.fit(
+            #    batch.statesactions_targets,
+            #    epochs=epochs,
+            #    callbacks=callbacks,
+            #    **kwargs
                 # initial_epoch=(iteration - 1) * epochs,
-            )
+            #)
+
+
+        # Target actions and target Q
+        #na = self.actor_targ(ns)
+        #tq = self.critic_targ([ns, na])
+        # Bellman backup: y = r + gamma * (1 - done) * tq
+        #y = r + self.gamma * (1.0 - d) * tf.squeeze(tq, axis=-1)
+
+        #with tf.GradientTape() as tape:
+        #    q = tf.squeeze(self.critic([s, a]), axis=-1)
+        #    loss = self.mse(y, q)
+        #grads = tape.gradient(loss, self.critic.trainable_variables)
+        #self.critic_opt.apply_gradients(zip(grads, self.critic.#trainable_variables))
+        #return loss
+
+            self.mse = tf.keras.losses.MeanSquaredError()
+
+            for epoch in range(epochs):
+                for statesactions, targets, weights in batch.statesactions_targets:
+
+                    print (f"num samples: {len(statesactions[1])}")
+
+                    st = tf.convert_to_tensor(statesactions[0], dtype=tf.float32)
+                    at = tf.convert_to_tensor(statesactions[1], dtype=tf.float32)
+                    tt = tf.convert_to_tensor(targets, dtype=tf.float32)
+
+                    #breakpoint()
+                    with tf.GradientTape() as tape:
+                        #breakpoint()
+                        q = self.critic([st, at])
+                        assert len(q) == len(tt)
+                        assert len(q[0]) == 1
+                        assert len(tt[0]) == 1
+                        assert tt.shape == q.shape
+
+                        loss = self.mse(tt, q)  # this assumes, both are of dims Nx1, not just N, thus, targets are warpped in 1d arrays
+
+                    #breakpoint()
+
+                    grads = tape.gradient(loss, self.critic.trainable_variables)
+
+                    self.critic_opt.apply_gradients(zip(grads, self.critic.trainable_variables))    
+                    
+                    print(f"epoch {epoch} critic update with loss: {loss.numpy()}")
 
     def fit_actor(
         self,
@@ -474,10 +612,24 @@ class NFQCA(Controller):
             self.reset_actor()
 
         batch.set_minibatch_size(minibatch_size).shuffle()
-        history = self.actor.fit(
-            batch.states, epochs=epochs, callbacks=callbacks, **kwargs
-        )
-        return history.history
+
+        for epoch in range(epochs):
+            for s in batch.states:
+                with tf.GradientTape() as tape:
+                    a = self.actor(s)
+                    q = self.critic([s, a])
+                    # Minimize(!) Q ⇒ minimize mean Q, because we have costs
+                    loss = tf.reduce_mean(q)
+                grads = tape.gradient(loss, self.actor.trainable_variables)
+                self.actor_opt.apply_gradients(zip(grads, self.actor.trainable_variables))
+
+                print(f"epoch {epoch} actor update with mean q: {loss.numpy()}")
+
+
+#        history = self.actor.fit(
+#            batch.states, epochs=epochs, callbacks=callbacks, **kwargs
+#        )
+#        return history.history
 
     def fit_normalizer(
         self, observations: np.ndarray, method: Optional[str] = None

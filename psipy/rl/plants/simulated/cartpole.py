@@ -54,15 +54,21 @@ class CartPoleBangAction(CartPoleAction):
 
     dtype = "discrete"
     channels = ("move",)
-    legal_values = ((-10, 10),)
+    legal_values = ((-10, 0, 10),)
 
 class CartPoleExtendedBangAction(CartPoleAction):
     """Action with left actions right actions"""
 
     dtype = "discrete"
     channels = ("move",)
-    legal_values = ((-10, 10, 0),)
+    legal_values = ((-10, 0, 10),)
 
+
+class CartPoleContinuousAction(CartPoleAction):
+    """Action with continuous values"""
+    dtype = "continuous"
+    channels = ("move",)
+    legal_values = ((-10, 10),)
 
 
 class CartPoleState(State):
@@ -78,13 +84,17 @@ class CartPoleState(State):
         "move_ACT",
     )
 
-def make_default_cost_function(x_threshold: float = 2.4) -> Callable[[np.ndarray], np.ndarray]:
+def make_default_cost_function(x_threshold: float = 2.4,
+                               valid_angle: float = None) -> Callable[[np.ndarray], np.ndarray]:
     def cost_function(state: np.ndarray) -> np.ndarray:
         x, x_dot, theta, sintheta, costheta, theta_dot, move_ACT = state
 
         cost = tanh2(theta, C=0.1, mu=0.05) / 10.0
 
         if (abs(x) >= x_threshold):
+            cost = 1.0
+
+        if valid_angle is not None and abs(theta) > valid_angle:
             cost = 1.0
 
         return cost
@@ -144,7 +154,14 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         action_type: Type[CartPoleAction] = CartPoleBangAction,
         render_mode: str = "human",
         do_not_reset: bool = False,
+        start_angle: float = None,
+        valid_angle: float = None,
     ):
+        """
+        Args:
+            start_angle: If given, the pendulum will be started at this angle. Measured in radians from upright position.
+            valid_angle: If given, system will be stopped with a termina state if the anlge leaves the valid range abs(angle) > valid_angle.
+        """
         if cost_function is None:
             cost_function = make_default_cost_function(x_threshold)
             print("CartPole is using default cost function")
@@ -152,8 +169,12 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         super().__init__(cost_function=cost_function)
 
         self.renderable = True
-
+        self.start_angle = start_angle if start_angle is not None else np.pi
+        self.valid_angle = valid_angle
         self.do_not_reset = do_not_reset
+
+        assert valid_angle is None or abs(start_angle) < valid_angle
+        # pendulumn needs to be started within valid range if a range is given
 
         self.x_threshold = x_threshold
         self.state_type = state_type
@@ -252,6 +273,9 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         if abs(x) > self.x_threshold:
             terminal = True
 
+        if self.valid_angle is not None and abs(theta) > self.valid_angle:
+            terminal = True
+
         info["force"] = force
         info["theta_accel"] = thetaacc
         info["x_accel"] = xacc
@@ -268,7 +292,7 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         self.x_start = random.random() - 0.5  # 0.0  # random.random() * 3.4 - 1.7
         # If doing the sway control task, do not spawn near the middle
         x_dot = 0
-        theta = np.pi - (random.random() * 0.1 - 0.05)
+        theta = self.start_angle - (random.random() * 0.001 - 0.0005)
         theta_dot = 0
         sin = math.sin(theta)
         cos = math.cos(theta)
@@ -363,6 +387,29 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         )
 
         gfxdraw.hline(self.surf, 0, self.screen_width, carty, (0, 0, 0))
+
+        # Draw action strength bar below the cart
+        action = self.current_force 
+        max_force = 10.0  # Maximum force from action space # TODO: make this dynamic by reading from action_type, legal values
+        
+        # Calculate bar properties
+        bar_width = abs(action) / max_force * cartwidth / 2.0 # Proportional to action magnitude
+        bar_height = 8.0
+        bar_y = carty - cartheight - 10  # Position below cart
+        
+        if action != 0:
+            # Determine bar direction and position
+            if action > 0:  # Right action
+                bar_x = cartx
+                bar_end_x = cartx + bar_width
+            else:  # Left action
+                bar_x = cartx - bar_width
+                bar_end_x = cartx
+            
+            # Draw the action bar
+            bar_color = (128, 128, 255)
+            gfxdraw.box(self.surf, (int(bar_x), int(bar_y), int(bar_width), int(bar_height)), bar_color)
+            gfxdraw.rectangle(self.surf, (int(bar_x), int(bar_y), int(bar_width), int(bar_height)), (0, 0, 0))
 
         self.surf = pygame.transform.flip(self.surf, False, True)
         self.screen.blit(self.surf, (0, 0))

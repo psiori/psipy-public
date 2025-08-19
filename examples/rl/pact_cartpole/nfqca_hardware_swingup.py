@@ -1,22 +1,7 @@
 # Copyright (C) PSIORI GmbH, Germany
-# Authors: Sascha Lange
+# Authors: Alexander Höreth, Sascha Lange
 
-"""Example script that learns to swing up PSIORI's version of the cartpole.
-
-This script trains a neural network to swing up and balance a cartpole using Neural Fitted Q-learning.
-
-The cartpole starts hanging down and needs to learn to swing up and balance in an upright position. The state consists of the cart position, velocities, and pole angle (represented as sine/cosine). Actions are discrete forces applied to the cart.
-
-Training data is stored in SART files under the 'psidata-nfs-sart-cartpole-swingup' directory. On subsequent runs without deleting this data, the script will:
-
-    1. Load the existing training data
-    2. Continue training the last saved model
-    4. Append new episodes to the existing dataset
-
-The script uses epsilon-greedy exploration and shaped rewards to guide learning, with costs approaching zero as the pole moves upward and the cart stays centered.
-
-It stores the model in the 'model-latest' file and it generates a plot of the cost function over time as well as plot of the trajectories of evaluation episodes.
-
+"""Example script that learns to swing up PSIORI's version of the cartpole using NFQ-CA with continuous actions.
 """
 import os
 import sys
@@ -28,20 +13,21 @@ import tensorflow as tf
 from tensorflow.keras import layers as tfkl
 import numpy as np
 
-from psipy.rl.controllers.nfqs import NFQs
+from psipy.rl.controllers.nfqca import NFQCA
+from psipy.rl.controllers.noise import RandomNormalNoise
 from psipy.rl.io.batch import Batch, Episode
 from psipy.rl.io.sart import SARTReader
 from psipy.rl.loop import Loop
-from psipy.rl.plants.simulated.cartpole import (
-    CartPoleBangAction,
-    CartPole,
-    CartPoleState,
+from psipy.rl.plants.real.pact_cartpole.cartpole import (
+    SwingupContinuousAction,
+    SwingupPlant,
+    SwingupState,
 )
 from psipy.rl.visualization.metrics import RLMetricsPlot
 from psipy.rl.visualization.plotting_callback import PlottingCallback
 
 # Define where we want to save our SART files
-EXPERIMENT_FOLDER = "experiment-nfqs-cartpole"
+EXPERIMENT_FOLDER = "experiment-nfqca-cartpole"
 SART_FOLDER = f"{EXPERIMENT_FOLDER}/psidata-sart-cartpole"
 PLOT_FOLDER = f"{EXPERIMENT_FOLDER}/plots"
 
@@ -52,7 +38,10 @@ NUM_EPISODES = 400
 NUM_EPISODE_STEPS = 400
 GAMMA = 0.98
 STACKING = 1            # history length. 1 = no stacking, just the current state.
-EPSILON = 0.05          # epsilon-greedy exploration
+EPSILON = 0.1           # epsilon-greedy exploration
+EPSILON_SCALE = 0.5     # std of the normal distribution to be added to explorative actions
+
+STACKING = 6
 
 
 DEFAULT_STEP_COST = 0.01
@@ -60,17 +49,29 @@ TERMINAL_COST = 1.0     # this is the cost for leaving the track. ATTENTION: it 
 
 X_THRESHOLD = 3.6
 
-# Create a model based on state, action shapes and lookback
-def make_model(n_inputs, lookback):
-    inp = tfkl.Input((n_inputs, lookback), name="states")
-    act = tfkl.Input((1,), name="actions")
+# Create actor and critic models based on state, action shapes and lookback
+
+def make_actor(inputs, lookback):
+    inp = tfkl.Input((inputs, lookback), name="state_actor")
     net = tfkl.Flatten()(inp)
-    net = tfkl.concatenate([act, net])
+    net = tfkl.Dense(256, activation="relu")(net)
+    net = tfkl.Dense(256, activation="relu")(net)
+    net = tfkl.Dense(100, activation="tanh")(net)
+    net = tfkl.Dense(1, activation="tanh")(net)
+    model = tf.keras.Model(inp, net, name="actor")
+    model.summary()
+    return model
+
+
+def make_critic(inputs, lookback):
+    inp = tfkl.Input((inputs, lookback), name="state_critic")
+    act = tfkl.Input((1,), name="act_in")
+    net = tfkl.Concatenate()([tfkl.Flatten()(inp), act])
     net = tfkl.Dense(256, activation="relu")(net)
     net = tfkl.Dense(256, activation="relu")(net)
     net = tfkl.Dense(100, activation="tanh")(net)
     net = tfkl.Dense(1, activation="sigmoid")(net)
-    model = tf.keras.Model([inp, act], net)
+    model = tf.keras.Model([inp, act], net, name="critic")
     model.summary()
     return model
 
@@ -80,57 +81,71 @@ state_channels = [
     "pole_sine",
     "pole_cosine",
     "pole_velocity",
-#   "move_ACT",  # add, if lookback > 1
+    "direction_ACT",  # add, if lookback > 1
 ]
 
 CART_POSITION_CHANNEL_IDX = state_channels.index("cart_position")
 COSINE_CHANNEL_IDX = state_channels.index("pole_cosine")
 
-def make_cost_function(x_threshold: float = 3.6,
-                       position_idx=None,
-                       cosine_idx=None) -> Callable[[np.ndarray], np.ndarray]:
-    def cost_function(state: np.ndarray) -> np.ndarray:
+def make_sparse_cost_func(position_idx: int=0,
+                          cosine_idx: int=3,
+                          step_cost: float=0.01,
+                          use_cosine: bool=True,
+                          use_upright_margin: bool=False,
+                          upright_margin: float=0.3,
+                          xminus: bool=True) -> Callable[[np.ndarray], np.ndarray]:
+    # Define a custom cost function to change the inbuilt costs
+    def sparse_costfunc(states: np.ndarray) -> np.ndarray:
+        center = (SwingupPlant.LEFT_SIDE + SwingupPlant.RIGHT_SIDE) / 2.0
+        margin = abs(SwingupPlant.RIGHT_SIDE - SwingupPlant.LEFT_SIDE) / 2.0 * 0.3  # 30% of distance from center to hard endstop
 
-        position = state[:, position_idx]
-        cosine = state[:, cosine_idx]
+        position = states[:, position_idx] 
+        cosine = states[:, cosine_idx]       
 
-        # ZERO COSTS in center of track with pole pointing upwards.
-        # Within the center region of the track, costs are SHAPED
-        # from DEFAULT_STEP_COST (in center, but pole pointing downwards),
-        # to 0.0 (in center, but pole pointing upwards) using the cosine
-        # of the pole angle.
-        costs = (1.0-(cosine+1.0)/2.0) * DEFAULT_STEP_COST
+        if isinstance(cosine, np.ndarray):
+            costs = np.zeros(cosine.shape)
+        else:
+            costs = 0.0
 
-        # DEFAULT COSTS for positions outside the center region of the track.
-        costs[abs(position) >= 0.2 * x_threshold] = DEFAULT_STEP_COST
+        if use_cosine:
+            costs = (1.0-(cosine+1.0)/2.0) * step_cost  # shaping of costs in goal area to reward low pole angle deviations from upright position
 
-        # VERY HIGH TERMINAL COSTS for leaving the track.
-        costs[abs(position) >= x_threshold]       = TERMINAL_COST
+        if use_upright_margin:
+            costs[1.0-(cosine+1.0)/2.0 > upright_margin] = step_cost    
+
+        costs[abs(position - center) >= margin] = step_cost 
+
+        if xminus:  # non-terminal bad area
+            costs[position + SwingupPlant.LEFT_SIDE <= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET * 2] = step_cost * 5
+            costs[position + SwingupPlant.LEFT_SIDE >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET * 2] = step_cost * 5
+
+        # terminal bad area
+        costs[position + SwingupPlant.LEFT_SIDE <= SwingupPlant.LEFT_SIDE + SwingupPlant.TERMINAL_LEFT_OFFSET] = 1.0
+        costs[position + SwingupPlant.LEFT_SIDE >= SwingupPlant.RIGHT_SIDE - SwingupPlant.TERMINAL_RIGHT_OFFSET] = 1.0
 
         return costs
 
-    return cost_function
+    return sparse_costfunc
 
-cost_function = make_cost_function(x_threshold=X_THRESHOLD,
-                                   position_idx=CART_POSITION_CHANNEL_IDX,
-                                   cosine_idx=COSINE_CHANNEL_IDX)
-
+cost_function = make_sparse_cost_func(position_idx=CART_POSITION_CHANNEL_IDX,
+                                      cosine_idx=COSINE_CHANNEL_IDX)
 
 print(">>> ATTENTION: chosen cost function: ", cost_function)
 
-ActionType = CartPoleBangAction
-StateType = CartPoleState
+ActionType = SwingupContinuousAction
+StateType = SwingupState
 
-plant = CartPole(x_threshold=X_THRESHOLD,
-                 cost_function=CartPole.cost_func_wrapper(
+plant = SwingupPlant(
+    hostname="192.168.2.171",
+    hilscher_port=5555,
+    sway_start=False,
+    cost_function=SwingupPlant.cost_func_wrapper(
                      cost_function,
                      state_channels))
-
 
 def plot_swingup_state_history(
     episode: Optional[Episode],
     state_channels: List[str],
-    plant: Optional[CartPole] = None,
     filename: Optional[str] = None,
     episode_num: Optional[int] = None,
 ) -> None:
@@ -230,34 +245,35 @@ if not os.path.exists(PLOT_FOLDER):
 
 # Load the latest model or create a new one
 lookback = STACKING
-nfq = None
+nfqca = None
 
 try:
-    nfq = NFQs.load(f"{EXPERIMENT_FOLDER}/model-latest.zip",
-                    custom_objects=[ActionType])
-        
-    nfq.optimizer = tf.keras.optimizers.Adam() # if you want a specific learning rate, provide it here as an argument with learning_rate=... -- the optimizer and the learning rate given to NFQs on construction is not stored in the model files.
-
+    nfqca = NFQCA.load(f"{EXPERIMENT_FOLDER}/model-latest.zip",
+                       custom_objects=[ActionType])
+    
     print(">>> MODEL LOADED from ", f"{EXPERIMENT_FOLDER}/model-latest.zip")
+
+    nfqca.exploration = RandomNormalNoise(size=1, std=EPSILON_SCALE)
 
 except Exception as e:
     # Make the NFQ model
-    model = make_model(len(state_channels), lookback=lookback)
-    nfq = NFQs(
-        model=model,
+    actor = make_actor(len(state_channels), lookback=lookback)
+    critic = make_critic(len(state_channels), lookback=lookback)
+
+    nfqca = NFQCA(
+        actor=actor,
+        critic=critic,
         state_channels=state_channels,
         action=ActionType,
-        action_values=ActionType.legal_values[0],
-        optimizer=tf.keras.optimizers.Adam(),
         lookback=lookback,
+        exploration=RandomNormalNoise(size=1, std=EPSILON_SCALE),
+        td3=False,  # TODO: double check if we want this
     )
     print(">>> MODEL could not be loaded, CREATED a new one")
 
-nfq.epsilon = 0.1
 
-# Collect initial data with a discrete random action controller
-loop = Loop(plant, nfq, "simulated.cartpole.CartPole", SART_FOLDER, render=RENDER)
-eval_loop = Loop(plant, nfq, "simulated.cartpole.CartPole", f"{SART_FOLDER}-eval", render=RENDER)
+loop = Loop(plant, nfqca, "pact.cartpole.SwingupPlant", SART_FOLDER, render=RENDER)
+eval_loop = Loop(plant, nfqca, "pact.cartpole.SwingupPlant", f"{SART_FOLDER}-eval", render=RENDER)
 
 metrics = { "total_cost": [], "avg_cost": [], "cycles_run": [], "wall_time_s": [] }
 min_avg_step_cost = 0.01  # if avg costs of an episode are less than 105% of this, we save the model
@@ -265,12 +281,14 @@ min_avg_step_cost = 0.01  # if avg costs of an episode are less than 105% of thi
 fig = None
 do_eval = EVAL
 
-callback = PlottingCallback(
-    ax1="q", is_ax1=lambda x: x.endswith("q"), ax2="ME", is_ax2=lambda x: x.endswith("qdelta")
-)
+RAND_START_EPS = 0
+
 
 for i in range(NUM_EPISODES):
     loop.run(1, max_episode_steps=NUM_EPISODE_STEPS)
+
+    if i < RAND_START_EPS:
+        continue
 
     action_channels = (f"{ActionType.channels[0]}",)
     print(">>> action_channels: ", action_channels)
@@ -280,7 +298,7 @@ for i in range(NUM_EPISODES):
         action_channels=action_channels,
         state_channels=state_channels,
         lookback=lookback,
-        control=nfq,
+        control=nfqca,
     )
 
     filename = f"{PLOT_FOLDER}/swingup_latest_episode-{len(batch._episodes)}.png"
@@ -294,24 +312,27 @@ for i in range(NUM_EPISODES):
     
     # Fit the normalizer
     if (i < 10 or i % 10 == 0) and i < NUM_EPISODES / 2:
-        nfq.fit_normalizer(batch.observations) # , method="max")
+        nfqca.fit_normalizer(batch.observations, method="std")
 
 
-    # Fit the controller
     try:
-        nfq.fit(
-            batch,
-            costfunc=cost_function,
-            iterations=4,
-            epochs=8,
-            minibatch_size=2048,
-            gamma=GAMMA,
-            callbacks=[callback],
-            verbose=1,
-        )
+        for iterations in range(2):
+            # Fit the controller
+            nfqca.fit_critic(
+                batch,
+                costfunc=cost_function,
+                iterations=2,
+                epochs=8,
+                minibatch_size=8192,
+                gamma=GAMMA,
+                verbose=1,
+            )
+            nfqca.fit_actor(batch, 
+                            epochs=1, 
+                            minibatch_size=2000,
+                            )
 
-
-        nfq.save(f"{EXPERIMENT_FOLDER}/model-latest-saving")  # this is always saved to allow to continue training after interrupting (and potentially changing) the script
+        nfqca.save(f"{EXPERIMENT_FOLDER}/model-latest-saving")  # this is always saved to allow to continue training after interrupting (and potentially changing) the script
 
         # delete the old model
         if os.path.exists(f"{EXPERIMENT_FOLDER}/model-latest.zip"):
@@ -325,10 +346,26 @@ for i in range(NUM_EPISODES):
         pass
 
     if do_eval:
-        old_epsilon = nfq.epsilon
-        nfq.epsilon = 0.0
-        eval_loop.run(1, max_episode_steps=600)
-        nfq.epsilon = old_epsilon
+        old_exploration = nfqca.exploration
+        nfqca.exploration = None
+        eval_loop.run(1, max_episode_steps=NUM_EPISODE_STEPS)
+        nfqca.exploration = old_exploration
+
+        # Create evaluation batch and plot
+        eval_batch = Batch.from_hdf5(
+            f"{SART_FOLDER}-eval",
+            action_channels=action_channels,
+            state_channels=state_channels,
+            lookback=lookback,
+            control=nfqca,
+        )
+
+        eval_filename = f"{PLOT_FOLDER}/swingup_eval_episode-{len(batch._episodes)}.png"
+
+        plot_swingup_state_history(eval_batch._episodes[len(eval_batch._episodes)-1],
+                                   state_channels=state_channels,
+                                   filename=eval_filename,
+                                   episode_num=len(batch._episodes))
 
         episode_metrics = eval_loop.metrics[1] # only one episode was run
 
@@ -336,7 +373,6 @@ for i in range(NUM_EPISODES):
         metrics["cycles_run"].append(episode_metrics["cycles_run"])
         metrics["wall_time_s"].append(episode_metrics["wall_time_s"])
         metrics["avg_cost"].append(episode_metrics["total_cost"] / episode_metrics["cycles_run"])
-
 
         metrics_plot.update(metrics)
         metrics_plot.plot()
@@ -350,10 +386,10 @@ for i in range(NUM_EPISODES):
         if avg_step_cost < min_avg_step_cost * 1.05:
             filename = f"{EXPERIMENT_FOLDER}/model-candidate-{len(batch._episodes)}"
             print("Saving candidate model: ", filename)
-            nfq.save(filename)
+            nfqca.save(filename)
 
         if avg_step_cost < min_avg_step_cost:
             min_avg_step_cost = avg_step_cost
-            nfq.save(f"{EXPERIMENT_FOLDER}/model-very_best")
+            nfqca.save(f"{EXPERIMENT_FOLDER}/model-very_best")
 
 
