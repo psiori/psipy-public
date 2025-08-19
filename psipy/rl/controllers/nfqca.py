@@ -421,15 +421,65 @@ class NFQCA(Controller):
         iterations: int = 1,
         epochs: int = 1,
         minibatch_size: int = -1,
-        gamma: float = 0.99,
-        # autostop: bool = False,
+        gamma: float = 0.98,
         callbacks: Optional[List] = None,
         reset_between_iterations: bool = False,
+        clip_targets_top: bool = True,
+        clip_targets_bottom: bool = False,
+        use_qmin_trick: bool = False,
         **kwargs,
     ) -> None:
         """Fits the critic model.
 
         Args:
+            gamma: Discount factor. Contradicting the belief of others in the
+                field, we believe in pragamaticaly using a gamma well below 1,
+                although this may lead to sub-optimal control policies, e.g. 
+                in shortest path to goal settings. In our experience, a gamma < 
+                1.0 helps a lot regarding stability and robustness over a 
+                variaty of tasks and parameter settings, especially in the 
+                beginning of the training process, where q-values in the goal 
+                area are most likely to be overestimated. We choose a value of 
+                0.98 as standard, which in the limit results in a maximum of 50 
+                x the default_step costs as expected future costs. This should 
+                be kept in mind as a guidance what length of lookahead can be 
+                expected and also when chosing the default step cost in such a 
+                such a way the future cost estimate is bounded below 1.0. We 
+                have good experience with increasing gamma towards 1.0 later in 
+                the training process for achieving longer lookaheads and 
+                assuring optimal control policies. If necessary for stability, 
+                this can be done in several steps distributed over the training 
+                procedure. In our experience, this approach does not lead to 
+                any negative effects in the quality of the final control policy.
+            clip_targets_top: Whether to clip targets at 0.95 to prevent the   
+                optimizer from pushing the weights too far into approximating a 
+                1.
+                This method was sugested by R. Hafner in "Dateneffiziente 
+                selbstlernende neuronale Regler", 2009. In our experience, this 
+                can be switched on without negative effects, positive effects 
+                in this more modern implemenation are presently unclear.
+            clip_targets_bottom: Whether to clip targets at 0.05 to prevent the 
+                optimizer from pushing the weights too far into approximating a 
+                0. This seems to have negative effects, with our standard 
+                modelling of zero-costs in the goal region. Do not use without 
+                good reason and comparison with the default setting.
+            qmin: Whether to use the q-min trick also suugested by R. Hafner in 
+                "Dateneffiziente selbstlernende neuronale Regler" 2009 to 
+                improve stability. This will deduct the minimum q-target value 
+                from all q-targets to "pull" the targets towards zero. From our 
+                preliminary experience this is not necessary on systems like    
+                the cartpole, but it sometimes quickly helps to "pull" a 
+                network with random initial high estimates of the goal states 
+                to zero. Where the algorithm might need dozens to hundreds of 
+                iterations to pull the network down to zero, switching this on 
+                for just one or two iterations can help immediately improve 
+                estimates in the critic. Whether this has really a positive 
+                effect on the actor and the overall learning time needed is 
+                unclear for now. Please note, that we have never seen a network 
+                to "diverge" (q-target values to run away, by constantly 
+                increasing everywhere) in practice with modern weight 
+                initialization and optimizers, iff using a gamma well below 1.
+
             **kwargs: Arguments going to ``keras.model.fit()``.
                       Example: ``verbose=0`` to suppress keras output
         """
@@ -462,9 +512,14 @@ class NFQCA(Controller):
 
             #breakpoint()
 
-            #target_qs = target_qs - np.min(target_qs)
-            #target_qs = np.clip(target_qs + 0.05, 0.05, 0.95)
-            target_qs = np.clip(target_qs, 0.0, 0.995)  
+            if use_qmin_trick:
+                target_qs = target_qs - np.min(target_qs)
+            if clip_targets_top and clip_targets_bottom:
+                target_qs = np.clip(target_qs + 0.05, 0.05, 0.95)
+            if clip_targets_top:
+                target_qs = np.clip(target_qs, 0.0, 0.995)  
+            if clip_targets_bottom:
+                target_qs = np.clip(target_qs + 0.05, 0.05, 1.0)
 
             batch.set_targets(target_qs)
 
