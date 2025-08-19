@@ -114,7 +114,7 @@ NUM_EPISODE_STEPS = 400
 GAMMA = 0.98
 STACKING = 1            # history length. 1 = no stacking, just the current state.
 EPSILON = 0.1           # epsilon-greedy exploration
-EPSILON_SCALE = 0.2     # std of the normal distribution to be added to explorative actions
+EPSILON_SCALE = ?      # std of the normal distribution to be added to explorative actions, its added to the nomalized actions (-1, 1) before scaling them back to the values expected by the plant. In our experience, everything from 0 to 2.0 can be useful depending on task and situation.
 
 LOAD_NFQ_CRITIC = False
 
@@ -241,15 +241,15 @@ for i in range(NUM_EPISODES):
         nfqca.fit_normalizer(batch.observations, method="std")
 
     try:
-        for iterations in range(1):
+        for iterations in range(?):
             # Fit the controller
 
             if True or not LOAD_NFQ_CRITIC:
                 nfqca.fit_critic(
                     batch,
-                    iterations=2,
-                    epochs=8,
-                    minibatch_size=4000,
+                    iterations=?,
+                    epochs=?,
+                    minibatch_size=?, # -1 for full batch
                     gamma=GAMMA,
                     verbose=1,
                 )
@@ -259,8 +259,8 @@ for i in range(NUM_EPISODES):
             # nfqca._actor = make_actor(len(state_channels), lookback=lookback)
 
             nfqca.fit_actor(batch, 
-                            epochs=1, 
-                            minibatch_size=500
+                            epochs=?, 
+                            minibatch_size=?  # -1 for full batch
                             )
 
         nfqca.save(f"{EXPERIMENT_FOLDER}/model-latest-saving")  # this is always saved to allow to continue training after interrupting (and potentially changing) the script
