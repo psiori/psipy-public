@@ -360,6 +360,7 @@ for i in range(NUM_EPISODES):
             state_channels=state_channels,
             lookback=lookback,
             control=nfqca,
+            costfunc=cost_function,
         )
 
         eval_filename = f"{PLOT_FOLDER}/swingup_eval_episode-{len(batch._episodes)}.png"
