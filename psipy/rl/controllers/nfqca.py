@@ -366,8 +366,8 @@ class NFQCA(Controller):
         #self.actor_opt = tf.keras.optimizers.RMSprop(learning_rate=0.0001)
         #self.critic_opt = tf.keras.optimizers.SGD(learning_rate=0.0001) 
         #self.actor_opt = tf.keras.optimizers.SGD(learning_rate=0.0001)
-        self.critic_opt = tf.keras.optimizers.Adam(learning_rate=0.0001) 
-        self.actor_opt = tf.keras.optimizers.Adam(learning_rate=0.0001)
+        self.critic_opt = tf.keras.optimizers.Adam(learning_rate=0.00001) # 0.0001 
+        self.actor_opt = tf.keras.optimizers.Adam(learning_rate=0.00001)
 
 
         #self.critic_opt = Rprop()

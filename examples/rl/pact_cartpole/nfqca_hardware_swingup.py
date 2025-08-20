@@ -36,10 +36,10 @@ EVAL = True
 
 NUM_EPISODES = 400
 NUM_EPISODE_STEPS = 400
-GAMMA = 0.98
+GAMMA = 0.99
 STACKING = 1            # history length. 1 = no stacking, just the current state.
 EPSILON = 0.1           # epsilon-greedy exploration
-EPSILON_SCALE = 2.0     # std of the normal distribution to be added to explorative actions
+EPSILON_SCALE = 0.05    # std of the normal distribution to be added to explorative actions
 
 STACKING = 6
 
@@ -128,7 +128,9 @@ def make_sparse_cost_func(position_idx: int=0,
     return sparse_costfunc
 
 cost_function = make_sparse_cost_func(position_idx=CART_POSITION_CHANNEL_IDX,
-                                      cosine_idx=COSINE_CHANNEL_IDX)
+                                      cosine_idx=COSINE_CHANNEL_IDX,
+                                      use_upright_margin=True,
+                                      upright_margin=0.1)
 
 print(">>> ATTENTION: chosen cost function: ", cost_function)
 
