@@ -1,8 +1,8 @@
      ____   _____ _____ ____ __   __
     |  _ \ / ____|_   _|  _ \ \ / /
-    | |_) | (___   | | | |_) |\ V / 
-    |  __/ \___ \  | | |  __/  > <  
-    | |    ____) |_| |_| |    / / 
+    | |_) | (___   | | | |_) |\ V /
+    |  __/ \___ \  | | |  __/  > <
+    | |    ____) |_| |_| |    / /
     |_|   |_____/|_____|_|   /_/
 
 # PSIORI's Machine Learning Library -- The Public Part
@@ -11,45 +11,59 @@ The psipy library is a private collection of machine learning algorithms and too
 
 ## Installation
 
-To install the psipy library, you can use pip. First, ensure you have Python 3.8 or later installed on your system. 
+To install the psipy library, we recommend using [uv](https://docs.astral.sh/uv/), a fast Python package manager. First, ensure you have Python 3.8 or later installed on your system.
 
-We suggest creating a virtual environment for your project using psipy or when working on psipy itself. You can use the following command to create a virtual environment and activate it:
+### Using uv (Recommended)
 
-```Shell
-python3.8 -m venv .venv
-source .venv/bin/activate
-```
+Install uv from brew or similar, `brew install uv`.
 
-Then, you can install psipy directly from the GitHub repository:
+1. Clone the repository and create a virtual environment:
 
-```Shell
-python --version  # make sure python 3.8 is used!
-git clone git@github.com:psiori/psipy-public.git
-pip install -e "./psipy-public[dev,gym]"
-```
+   ```Shell
+   git clone git@github.com:psiori/psipy-public.git
+   cd psipy-public
+   uv venv --python 3.8
+   source .venv/bin/activate
+   ```
+
+2. Install psipy with development dependencies:
+
+   ```Shell
+   uv pip install -e ".[dev,gym]"
+   ```
+
+3. Run commands using the virtual environment by using `uv run python your_script.py` or activating the virtual environment first:
+
+   ```Shell
+   source .venv/bin/activates
+   ```
+
 The option '-e' is used to install the package in editable mode, which allows you to make changes to the code and have them reflected in the installed package without having to reinstall. Skip this option if you do not plan on making changes to the code of psipy itself.
 
 The options '[dev,gym]' are used to install additional dependencies for the development environment (inclduing pytest and jupyter) as well as AI gym together with its own dependencies. Please be aware that we switched to Farama-Foundations's fork [Gymnasium](https://github.com/Farama-Foundation/Gymnasium) of OpenAI's gym when they took over maintenance of the original gym library.
 
 ## Getting started
 
-To get started, we propose to have a look at 
+To get started, we propose to have a look at
 
-   - examples/rl/simulated_cartpole/nfqs_psiori_cartpole_minimal.py
+- examples/rl/simulated_cartpole/nfqs_psiori_cartpole_minimal.py
 
 which will learn to swing up and balance a simulated cart-pole system.
 
 The script is an example of about the minimal code that is needed to successfully learn a policy on the simulated cartpole system to swing up, stabilize and balance the pole from scratch within 80 to 140 episodes. It uses our NFQ variant that has the actions encoded in the input layer (named "NFQs"). It can be run after activating the above environment as follows:
+
 ```Shell
 cd examples/rl/simulated_cartpole/
 python3 nfqs_psiori_cartpole_minimal.py
 ```
 
 A slightly longer version that can be run using
+
 ```Shell
 cd examples/rl/simulated_cartpole/
 python3 nfqs_psiori_cartpole.py
 ```
+
 also demonstrate saving and loading models, running evaluations separate from the training runs and creating different plots automatically while running the experiment.
 
 ## Tutorials
