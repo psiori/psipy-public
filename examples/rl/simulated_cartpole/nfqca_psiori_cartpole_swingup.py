@@ -307,7 +307,7 @@ for i in range(NUM_EPISODES):
 
 
     try:
-        for iterations in range(100):
+        for iterations in range(2):
             # Fit the controller
             nfqca.fit_critic(
                 batch,
