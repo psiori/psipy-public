@@ -130,7 +130,7 @@ class SwingupContinuousExtendedDiscreteAction(Action):
 class SwingupContinuousAction(Action):
     dtype = "continuous"
     channels = ("direction",)
-    legal_values = ((-300, 300),)
+    legal_values = ((-500, 500),)
 
 
 class SwingupState(State):

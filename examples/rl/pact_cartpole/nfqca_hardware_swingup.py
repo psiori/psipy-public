@@ -86,13 +86,16 @@ state_channels = [
 
 CART_POSITION_CHANNEL_IDX = state_channels.index("cart_position")
 COSINE_CHANNEL_IDX = state_channels.index("pole_cosine")
+ACTION_CHANNEL_IDX = state_channels.index("direction_ACT")
 
 def make_sparse_cost_func(position_idx: int=0,
                           cosine_idx: int=3,
+                          action_idx: int=5,
                           step_cost: float=0.01,
                           use_cosine: bool=True,
                           use_upright_margin: bool=False,
                           upright_margin: float=0.3,
+                          use_energy: bool=False,
                           xminus: bool=True) -> Callable[[np.ndarray], np.ndarray]:
     # Define a custom cost function to change the inbuilt costs
     def sparse_costfunc(states: np.ndarray) -> np.ndarray:
@@ -101,6 +104,7 @@ def make_sparse_cost_func(position_idx: int=0,
 
         position = states[:, position_idx] 
         cosine = states[:, cosine_idx]       
+        action = states[:, action_idx]
 
         if isinstance(cosine, np.ndarray):
             costs = np.zeros(cosine.shape)
@@ -109,6 +113,10 @@ def make_sparse_cost_func(position_idx: int=0,
 
         if use_cosine:
             costs = (1.0-(cosine+1.0)/2.0) * step_cost  # shaping of costs in goal area to reward low pole angle deviations from upright position
+
+
+        if use_energy:
+            costs = costs + (abs(action) > 0) * abs(action) * step_cost * 0.0005
 
         if use_upright_margin:
             costs[1.0-(cosine+1.0)/2.0 > upright_margin] = step_cost    
@@ -129,8 +137,10 @@ def make_sparse_cost_func(position_idx: int=0,
 
 cost_function = make_sparse_cost_func(position_idx=CART_POSITION_CHANNEL_IDX,
                                       cosine_idx=COSINE_CHANNEL_IDX,
+                                      action_idx=ACTION_CHANNEL_IDX,
                                       use_upright_margin=True,
-                                      upright_margin=0.1)
+                                      upright_margin=0.00025,
+                                      use_energy=True)
 
 print(">>> ATTENTION: chosen cost function: ", cost_function)
 
@@ -360,7 +370,7 @@ for i in range(NUM_EPISODES):
             state_channels=state_channels,
             lookback=lookback,
             control=nfqca,
-            costfunc=cost_function,
+            #costfunc=cost_function,
         )
 
         eval_filename = f"{PLOT_FOLDER}/swingup_eval_episode-{len(batch._episodes)}.png"
