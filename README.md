@@ -42,6 +42,21 @@ The option '-e' is used to install the package in editable mode, which allows yo
 
 The options '[dev,gym]' are used to install additional dependencies for the development environment (inclduing pytest and jupyter) as well as AI gym together with its own dependencies. Please be aware that we switched to Farama-Foundations's fork [Gymnasium](https://github.com/Farama-Foundation/Gymnasium) of OpenAI's gym when they took over maintenance of the original gym library.
 
+### System Dependencies
+The `box2d` physics engine requires `swig` to be installed.
+
+On Mac:
+
+```shell
+brew install swig
+```
+
+On Linux:
+
+```shell
+sudo apt-get install swig
+```
+
 ## Getting started
 
 To get started, we propose to have a look at
