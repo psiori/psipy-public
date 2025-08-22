@@ -8,7 +8,6 @@ import sys
 from typing import Callable, Optional, List
 
 from matplotlib import pyplot as plt
-from numpy import cast
 import tensorflow as tf
 from tensorflow.keras import layers as tfkl
 import numpy as np
@@ -238,7 +237,9 @@ if not os.path.exists(PLOT_FOLDER):
 lookback = STACKING
 nfqca = None
 
-try:
+
+if True:
+#try:
     nfqca = NFQCA.load(f"{EXPERIMENT_FOLDER}/model-latest.zip",
                        custom_objects=[ActionType])
     
@@ -246,7 +247,8 @@ try:
 
     nfqca.exploration = RandomNormalNoise(size=1, std=EPSILON_SCALE)
 
-except Exception as e:
+if False:
+#except Exception as e:
     # Make the NFQ model
     actor = make_actor(len(state_channels), lookback=lookback)
     critic = make_critic(len(state_channels), lookback=lookback)
@@ -307,7 +309,7 @@ for i in range(NUM_EPISODES):
 
 
     try:
-        for iterations in range(100):
+        for iterations in range(1):
             # Fit the controller
             nfqca.fit_critic(
                 batch,

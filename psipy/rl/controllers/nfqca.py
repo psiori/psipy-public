@@ -15,6 +15,7 @@ from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, Type
 
 import numpy as np
 import tensorflow as tf
+
 from tensorflow.keras import layers as tfkl
 from tensorflow.keras.optimizers import RMSprop
 
@@ -98,6 +99,7 @@ class NFQCA(Controller):
             optimizer=optimizer,
             **kwargs,
         )
+
         assert self.action_type.dtype == "continuous"
         assert len(self.action_type.legal_values) == 1, "Only single channel actions."
         assert actor.output.shape[1] == 1, "Only supports single action actors atm."
@@ -493,8 +495,10 @@ class NFQCA(Controller):
             batch.set_minibatch_size(-1).sort()
 
             #breakpoint()
-            a = self.actor(batch.nextstates[0])
-            qs = self.critic([batch.nextstates[0], a])
+
+            ns = tf.convert_to_tensor(batch.nextstates[0], dtype=tf.float32)
+            a = self.actor(ns)
+            qs = self.critic([ns, a])
 
             #qs = self.chained_critic(batch.nextstates[0]).numpy().ravel()
             costs, terminals = batch.costs_terminals[0]
@@ -615,9 +619,10 @@ class NFQCA(Controller):
 
         for epoch in range(epochs):
             for s in batch.states:
+                st = tf.convert_to_tensor(s, dtype=tf.float32)
                 with tf.GradientTape() as tape:
-                    a = self.actor(s)
-                    q = self.critic([s, a])
+                    a = self.actor(st)
+                    q = self.critic([st, a])
                     # Minimize(!) Q ⇒ minimize mean Q, because we have costs
                     loss = tf.reduce_mean(q)
                 grads = tape.gradient(loss, self.actor.trainable_variables)
@@ -660,8 +665,8 @@ class NFQCA(Controller):
 
     def _save(self, zipfile: MemoryZipFile) -> MemoryZipFile:
         zipfile.add("config.json", self.get_config())
-        zipfile.add("actor_model.h5", self.__actor)
-        zipfile.add("critic_model.h5", self.__critic)
+        zipfile.add("actor_model.keras", self.__actor)
+        zipfile.add("critic_model.keras", self.__critic)
         zipfile.add_json(
             "Action.json",
             dict(
@@ -679,10 +684,27 @@ class NFQCA(Controller):
         cls, zipfile: MemoryZipFile, custom_objects: Optional[List[Type[object]]] = None
     ) -> "NFQCA":
         config = zipfile.get("config.json")
-        actor_model = zipfile.get_keras("actor_model.h5", custom_objects)
-        critic_model = zipfile.get_keras("critic_model.h5", custom_objects)
+        actor_model = zipfile.get_keras("actor_model.keras", custom_objects, support_legacy=True)
+        critic_model = zipfile.get_keras("critic_model.keras", custom_objects, support_legacy=True)
         action_meta = zipfile.get_json("Action.json")
         assert isinstance(action_meta, dict)
+
+        # KERAS 3 presently (2025-08-22) does NOT preserve the models input and # output layer types; it wraps tensors in a list, if they were not 
+        # already.
+        # this seems to be "by intetntion" or at least not likely to change
+        # quickly: https://github.com/keras-team/keras/issues/19999
+        # so we need to unwrap the tensors here.
+        # so annoying that the new distribution violates basic contracts 
+        # like model == model.save().load() :(
+        # Unfortunately, this will loose all internal states. 
+        actor_model = tf.keras.Model(
+            inputs = actor_model.inputs[0] if isinstance(actor_model.inputs, (list, tuple)) else actor_model.inputs, 
+            outputs = actor_model.outputs[0] if isinstance(actor_model.outputs, (list, tuple)) else actor_model.outputs)
+        
+        critic_model = tf.keras.Model(
+            inputs = critic_model.inputs, # do not unwrap, its a list by intention already before saving and loading 
+            outputs = critic_model.outputs[0] if isinstance(critic_model.outputs, (list, tuple)) else critic_model.outputs)
+
         action_type = cls.load_action_type(action_meta, custom_objects)
         obj = cls(actor=actor_model, critic=critic_model, action=action_type, **config)
         obj.normalizer = StackNormalizer.load(zipfile)
