@@ -49,7 +49,7 @@ doc_remove:
 	make -C docs rm
 
 editable_install:
-	pip install -e ".[dev,gym]"
+	uv pip install -e ".[dev]"
 
 test: clean
 	python3 -c "import tensorflow as tf; print(tf.GIT_VERSION, tf.VERSION)"
@@ -58,14 +58,24 @@ test: clean
 	mypy psipy
 
 test_venv:
-	python3 -m venv .test_venv
+	uv venv .test_venv
 	. .test_venv/bin/activate
-	pip install -e ".[dev,gym]"
+	uv pip install -e ".[dev]"
 
 dist/psipy.%:
 	# *nix: %/$* == so
 	#  win: %/$* == pyd
 	./tools/pypack psipy --output dist --no-tests --cleanup
+
+lock:
+	uv pip compile -o requirements.txt requirements.in
+	uv pip compile -o requirements-dev.txt requirements-dev.in -c requirements.txt
+
+sync:
+	uv pip sync requirements.txt
+
+sync-dev:
+	uv pip sync requirements-dev.txt
 
 ## DOCKER
 DOCKER_SUFFIX?=
