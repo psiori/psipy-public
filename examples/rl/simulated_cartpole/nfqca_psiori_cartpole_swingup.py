@@ -238,8 +238,7 @@ lookback = STACKING
 nfqca = None
 
 
-if True:
-#try:
+try:
     nfqca = NFQCA.load(f"{EXPERIMENT_FOLDER}/model-latest.zip",
                        custom_objects=[ActionType])
     
@@ -247,8 +246,7 @@ if True:
 
     nfqca.exploration = RandomNormalNoise(size=1, std=EPSILON_SCALE)
 
-if False:
-#except Exception as e:
+except Exception as e:
     # Make the NFQ model
     actor = make_actor(len(state_channels), lookback=lookback)
     critic = make_critic(len(state_channels), lookback=lookback)
