@@ -25,7 +25,7 @@ class TestExpandDimsLayer:
         inp = tf.keras.Input((2, 1, 1))
         out = layer(inp)
         assert len(out.shape) == 5
-        assert out.shape.as_list() == [None, 1, 2, 1, 1]
+        assert list(out.shape) == [None, 1, 2, 1, 1]
 
     @staticmethod
     def test_negative_axis():
@@ -36,14 +36,14 @@ class TestExpandDimsLayer:
         inp = tf.keras.Input((2, 1, 4))
         out = layer(inp)
         assert len(out.shape) == 5
-        assert out.shape.as_list() == [None, 2, 1, 4, 1]
+        assert list(out.shape) == [None, 2, 1, 4, 1]
 
     @staticmethod
     def test_model():
         inp = tf.keras.Input((2, 4))
         out = ExpandDims(axis=2)(inp)
         model = tf.keras.Model(inputs=inp, outputs=out)
-        assert len(model.layers[1].output_shape) == 4
+        assert len(model.layers[1].output.shape) == 4
         assert len(model.output_shape) == 4
         prediction = model.predict(np.random.rand(32, 2, 4))
         assert prediction.shape == (32, 2, 1, 4)

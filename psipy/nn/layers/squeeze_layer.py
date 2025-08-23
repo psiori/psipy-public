@@ -6,6 +6,7 @@
 #
 # Authors:
 #   Alexander Hoereth <alexander@psiori.com>, January 2019
+#   Sascha Langer <sascha@psiori.com>, August 2025
 
 import tensorflow as tf
 
@@ -23,10 +24,11 @@ class Squeeze(tf.keras.layers.Layer):
 
     def compute_output_shape(self, input_shape):
         axis = self.axis
-        if axis > 0:
-            axis -= 1  # shape does not include batch_size here
+        # previously, we substracted 1 from axis, as the batch size was not
+        # included in the input_shape. As this seems to have changed in newer 
+        # tf and keras, we now leave the axis as specified.
         if input_shape[axis] != 1:
-            raise ValueError("Can only squeeze axis of size 1.")
+            raise ValueError(f"Can only squeeze axis of size 1, but got {input_shape[axis]}.")
         input_shape = input_shape[:axis] + input_shape[axis + 1 :]
         return input_shape
 
