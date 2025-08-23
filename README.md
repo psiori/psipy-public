@@ -7,29 +7,39 @@
 
 # PSIORI's Machine Learning Library -- The Public Part
 
-The psipy library is a private collection of machine learning algorithms and tools developed and used by PSIORI. It is designed to be a modular and extensible framework for building and deploying software solutions that incorporate or are based on machine learning components. This public version of the library is a subset of the full private library and currently includes only large parts of the Reinforcement Learning (RL) module. It may be expanded to include additional modules in the future.
+The psipy library is a private collection of machine learning algorithms and tools developed and used by PSIORI. It is designed to be a modular and extensible framework for building and deploying software solutions that incorporate or are based on machine learning components. This public version of the library is a subset of the full private library and currently includes the core learninng algorithms of the Reinforcement Learning (RL) module. It may be expanded to include additional modules in the future.
 
 ## Installation
 
-To install the psipy library, you can use pip. First, ensure you have Python 3.8 or later installed on your system. 
+To install the psipy library, you can use uv. To find out how to install and use it, have a look at their repo https://github.com/astral-sh/uv .
+
+We test with and assume you use python 12.
 
 We suggest creating a virtual environment for your project using psipy or when working on psipy itself. You can use the following command to create a virtual environment and activate it:
 
 ```Shell
-python3.8 -m venv .venv
+uv venv --python 3.12.0
 source .venv/bin/activate
 ```
 
-Then, you can install psipy directly from the GitHub repository:
+Then, with this environment active, you can install psipy directly from the GitHub repository:
 
 ```Shell
-python --version  # make sure python 3.8 is used!
+python --version  # make sure python 3.12 is used!
 git clone git@github.com:psiori/psipy-public.git
-pip install -e "./psipy-public[dev,gym]"
+cd psipy-public
+uv pip sync requirements-dev.txt    # or requirements.txt if you don't need the dev infrastructure
+uv pip install -e ".[dev]"
 ```
 The option '-e' is used to install the package in editable mode, which allows you to make changes to the code and have them reflected in the installed package without having to reinstall. Skip this option if you do not plan on making changes to the code of psipy itself.
 
-The options '[dev,gym]' are used to install additional dependencies for the development environment (inclduing pytest and jupyter) as well as AI gym together with its own dependencies. Please be aware that we switched to Farama-Foundations's fork [Gymnasium](https://github.com/Farama-Foundation/Gymnasium) of OpenAI's gym when they took over maintenance of the original gym library.
+The options '[dev]' is used to install additional dependencies for the development environment (inclduing pytest and jupyter).
+
+Alternatively, you can use the makefile we provide to install requirements and psipy in your environment:
+```Shell
+make sync-dev            # runs uv pip sync from above
+make editable_install    # runs uv pip instlal -e from above
+```
 
 ## Getting started
 
@@ -42,13 +52,13 @@ which will learn to swing up and balance a simulated cart-pole system.
 The script is an example of about the minimal code that is needed to successfully learn a policy on the simulated cartpole system to swing up, stabilize and balance the pole from scratch within 80 to 140 episodes. It uses our NFQ variant that has the actions encoded in the input layer (named "NFQs"). It can be run after activating the above environment as follows:
 ```Shell
 cd examples/rl/simulated_cartpole/
-python3 nfqs_psiori_cartpole_minimal.py
+python nfqs_psiori_cartpole_minimal.py
 ```
 
 A slightly longer version that can be run using
 ```Shell
 cd examples/rl/simulated_cartpole/
-python3 nfqs_psiori_cartpole.py
+python nfqs_psiori_cartpole.py
 ```
 also demonstrate saving and loading models, running evaluations separate from the training runs and creating different plots automatically while running the experiment.
 
