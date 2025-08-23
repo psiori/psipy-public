@@ -85,7 +85,7 @@ class Saveable(metaclass=ABCMeta):
     (second argument) as well as the filepaths's (first argument) extension.
     The supported formats are the following:
 
-    - ``tf.keras.Model``: ``.h5``
+    - ``tf.keras.Model``: ``.keras``
     - ``Dict[str, Union[None, int, float, str]]``: ``.json``
     - ``Dict[str, np.ndarray]``: ``.npz``
     - ``np.ndarray``: ``.npy``

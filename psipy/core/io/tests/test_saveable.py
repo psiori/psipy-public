@@ -34,6 +34,9 @@ class NoopLayerMock(tf.keras.layers.Layer):
         self.arg = arg
         super(NoopLayerMock, self).__init__(**kwargs)
 
+    def call(self, inputs):
+        return inputs
+
     def get_config(self):
         return dict(arg=self.arg)
 
@@ -239,19 +242,19 @@ class TestSaveable:
             def __init__(self):
                 Saveable.__init__(self)
                 inp = tf.keras.Input((1, 2))
-                h = tf.keras.layers.Lambda(lambda x: tf.expand_dims(x, 1))(inp)
+                h = tf.keras.layers.Lambda(lambda x: tf.expand_dims(x, 1), output_shape=(1, 2))(inp)
                 h = NoopLayerMock(arg=123)(h)
                 out = tf.keras.layers.Dense(1)(h)
                 self.model = tf.keras.Model(inputs=inp, outputs=out)
 
             def _save(self, zipfile):
-                return zipfile.add("model.h5", self.model)
+                return zipfile.add("model.keras", self.model)
 
             @classmethod
             def _load(cls, zipfile):
                 instance = cls()
                 instance.model = zipfile.get_keras(
-                    "model.h5",
+                    "model.keras",
                     custom_objects=[NoopLayerMock],
                 )
                 return instance

@@ -385,7 +385,7 @@ class MemoryZipFile:
 
  
     def get_keras(
-        self, filepath: str, custom_objects: Optional[Union[List, Dict]] = None, support_legacy: bool = True
+        self, filepath: str, custom_objects: Optional[Union[List, Dict]] = None, support_legacy: bool = True, safe_mode: bool = False, compile: bool = False
     ) -> tf.keras.Model:
         """Get a keras model from the zipfile at filepath.
 
@@ -419,7 +419,7 @@ class MemoryZipFile:
             self._zipfile.extractall(path=tmpdir, members=[filepath])
             abspath = path_join(tmpdir, filepath)
 
-            model = keras.saving.load_model(abspath, custom_objects=object_map, compile=False)
+            model = keras.saving.load_model(abspath, custom_objects=object_map, compile=compile, safe_mode=safe_mode)
 
         # KERAS 3 presently (2025-08-22) does NOT preserve the models input and # output layer types; it wraps tensors in a list, if they were not 
         # already.
