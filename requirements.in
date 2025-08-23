@@ -1,5 +1,4 @@
 azure-storage-blob
-box2d-py
 h5py~=3.11.0
 matplotlib
 numpy

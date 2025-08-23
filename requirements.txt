@@ -15,8 +15,6 @@ azure-core==1.35.0
     # via azure-storage-blob
 azure-storage-blob==12.26.0
     # via -r requirements.in
-box2d-py==2.3.8
-    # via -r requirements.in
 certifi==2025.8.3
     # via requests
 cffi==1.17.1

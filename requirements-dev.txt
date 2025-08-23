@@ -14,8 +14,6 @@ anyio==4.10.0
     # via
     #   httpx
     #   jupyter-server
-appnope==0.1.4
-    # via ipykernel
 argon2-cffi==25.1.0
     # via jupyter-server
 argon2-cffi-bindings==25.1.0
@@ -53,10 +51,6 @@ beautifulsoup4==4.13.4
     # via nbconvert
 bleach==6.2.0
     # via nbconvert
-box2d-py==2.3.8
-    # via
-    #   -c requirements.txt
-    #   -r requirements.in
 certifi==2025.8.3
     # via
     #   -c requirements.txt
