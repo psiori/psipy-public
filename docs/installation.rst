@@ -3,7 +3,7 @@
 Installation
 ============
 
-Make sure you are using Python 3.6. Any version below is not supported, versions
+Make sure you are using Python 3.12. Any version below is not supported, versions
 above are kept in mind but not actively tested.
 
 .. code:: bash
@@ -20,7 +20,7 @@ Install the package into your environment:
 
 .. code:: bash
 
-    pip install -e "./psipy[dev,automl,gym]"
+    uv pip install -e "./psipy[dev]"
 
 By using ``-e``, the install is "editable". This results in any changes you
 apply to the psipy code directly being reflected in the installed package.

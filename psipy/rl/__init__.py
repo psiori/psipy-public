@@ -54,7 +54,7 @@ Read more:  :mod:`psipy.rl.core.plant`
 Control
 -------
 
-Read more: :mod:`psipy.rl.core.control`
+Read more: :mod:`psipy.rl.core.controller`
 
 """
 

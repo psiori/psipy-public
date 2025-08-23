@@ -143,7 +143,7 @@ html_static_path = ["_static"]
 # html_additional_pages = {"index": "index.rst"}
 
 html_theme_options = {
-    "canonical_url": "https://psipy-public.psiori.net",
+    "canonical_url": "https://psipy-public.psiori.com",
     "logo_only": False,
     "display_version": False,
     "prev_next_buttons_location": "bottom",
@@ -179,4 +179,4 @@ def linkcode_resolve(domain, info):
     if not info["module"]:
         return None
     filename = info["module"].replace(".", "/")
-    return "https://github.com/psiori/psipy-public/tree/develop/%s.py" % filename
+    return "https://github.com/psiori/psipy-public/tree/main/%s.py" % filename

@@ -87,8 +87,7 @@ adds *target networks*  for both critic and actor.
 Generally, the changes introduced by DDPG to :ref:`NFQCA` are similar as the
 changes introduced by DQN to :ref:`NFQ`.
 
-As psipy-rl focuses on real offline policy updates (data collection is
-completely separate from training), DDPG stands independently.
+As psipy-rl focuses on separation of data acquisition and training, and since we want to fully adapt the collect & infer paradigm, we have not integrated these 'inter-episode' updates into our variant of NFQ-CA / DDPG. We also will not adapt and do not believe in the target network idea. Instead, we calculate new targets in the data-space before sweeping over the full batch (in mini-batches), thus, not needing a 'frozen' network.
 
 .. note::
     Lillicrap, Timothy P., et al.

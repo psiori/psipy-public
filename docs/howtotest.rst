@@ -8,8 +8,8 @@ During development, it is recommended to install :mod:`psipy` into a python virt
 
 .. code-block:: bash
 
-    $ python3 -m venv .venv
-    $ pip install -e ".[dev,automl,gym]"
+    $ uv venv -p 3.12
+    $ uv pip install -e ".[dev]"
 
 When running the ``psipy`` tests, one has multiple options which can be combined creatively.
 
@@ -29,7 +29,7 @@ Excluding a specific submodule's tests:: bash
 
 .. code-block:: bash
 
-    $ pytest -k "not psipy/dataroom"
+    $ pytest -k "not psipy/core"
 
 Excluding tests marked as slow by the developer:: bash
 
