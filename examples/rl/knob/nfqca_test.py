@@ -8,7 +8,6 @@ import sys
 from typing import Callable, Optional, List
 
 from matplotlib import pyplot as plt
-from numpy import cast
 import tensorflow as tf
 from tensorflow.keras import layers as tfkl
 import numpy as np

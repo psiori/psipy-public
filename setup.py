@@ -36,12 +36,10 @@ setup(
     author_email="info@psiori.com",
     packages=find_packages(),
     install_requires=install_requires,
-    setup_requires=["setuptools>=41.0.0"],
+    setup_requires=["setuptools>=70.0.0"],
     tests_require=dev_requires,
     extras_require={
         "dev": dev_requires,
-        "gym": ["gymnasium[classic-control]~=0.29.1"],
-        "win": ["windows-curses~=2.1.0"],
     },
     entry_points=dict(console_scripts=["tui = psipy.rl.io.terminal_interface:main"]),
 )

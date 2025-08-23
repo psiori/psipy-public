@@ -29,6 +29,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import h5py
 import numpy as np
 import tensorflow as tf
+import keras
 
 # from psipy.core.io.saveable import TSaveable
 from psipy.core.io.json import JSONEncodable, json_check, json_decode, json_encode
@@ -364,15 +365,16 @@ class MemoryZipFile:
             targetpath: Location to add the model inside the zipfile.
             model: Model instance to store.
         """
-        LOG.info("You might want to prefer using 'add_tf'.")
-        assert targetpath.endswith(".h5")
-        data = io.BytesIO()
-        with h5py.File(data, "w") as h5f:
-            tf.keras.models.save_model(model, h5f, save_format="h5")
-        return self.add_raw(targetpath, data.getvalue())
+        self._maybe_open()
+        with TemporaryDirectory() as tmpdir:
+            tmppath = path_join(tmpdir, targetpath)
+            keras.saving.save_model(model, tmppath)
+            self.add_files(targetpath, tmppath)
+        return self
 
+ 
     def get_keras(
-        self, filepath: str, custom_objects: Optional[Union[List, Dict]] = None
+        self, filepath: str, custom_objects: Optional[Union[List, Dict]] = None, support_legacy: bool = True
     ) -> tf.keras.Model:
         """Get a keras model from the zipfile at filepath.
 
@@ -381,14 +383,41 @@ class MemoryZipFile:
             custom_objects: May contain a list of objects (for example custom
                 layers) used by the loaded model but not native to Keras.
         """
-        self.check_exists(filepath)
+
+        if support_legacy and filepath.endswith(".keras"):
+            legacy_filepath = filepath[:-6] + ".h5"
+
+            if self.exists(legacy_filepath):
+                filepath = legacy_filepath
+
+        self.check_exists(filepath)  # will throw an error if the file does not exist
+
         object_map: Optional[Dict[str, Callable]] = None
         if isinstance(custom_objects, dict):
             object_map = custom_objects
         elif isinstance(custom_objects, list):
             object_map = {inspect.unwrap(co).__name__: co for co in custom_objects}
-        with self.get_hdf5(filepath) as h5f:
-            model = tf.keras.models.load_model(h5f, custom_objects=object_map)
+
+        with TemporaryDirectory() as tmpdir:
+            files = self.ls("/", abs=True, recursive=True, include_directories=False)
+
+            filepath = path_join(self._cwd, filepath)
+            if filepath[0] == "/":  # No 'root' slash in zipfiles.
+                filepath = filepath[1:]
+
+            self._zipfile.extractall(path=tmpdir, members=[filepath])
+            abspath = path_join(tmpdir, filepath)
+
+            model = keras.saving.load_model(abspath, custom_objects=object_map, compile=False)
+
+        # KERAS 3 presently (2025-08-22) does NOT preserve the models input and # output layer types; it wraps tensors in a list, if they were not 
+        # already.
+        # this seems to be "by intetntion" or at least not likely to change
+        # quickly: https://github.com/keras-team/keras/issues/19999
+        # so we need to unwrap the tensors here.
+        # so annoying that the new distribution violates basic contracts 
+        # like model == model.save().load() :(
+
         return model
 
     def add_files(self, targetpath: str, *sourcepaths: str):

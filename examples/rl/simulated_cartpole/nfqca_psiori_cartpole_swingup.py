@@ -8,7 +8,6 @@ import sys
 from typing import Callable, Optional, List
 
 from matplotlib import pyplot as plt
-from numpy import cast
 import tensorflow as tf
 from tensorflow.keras import layers as tfkl
 import numpy as np
@@ -237,6 +236,7 @@ if not os.path.exists(PLOT_FOLDER):
 # Load the latest model or create a new one
 lookback = STACKING
 nfqca = None
+
 
 try:
     nfqca = NFQCA.load(f"{EXPERIMENT_FOLDER}/model-latest.zip",

@@ -1,0 +1,14 @@
+-r requirements.in
+flake8-bugbear
+flake8
+flaky
+isort
+jupyter
+mypy
+pre-commit
+pytest-cov
+pytest
+recommonmark
+sphinx_rtd_theme
+sphinx-autodoc-typehints
+Sphinx

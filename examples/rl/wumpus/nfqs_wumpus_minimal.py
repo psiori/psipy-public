@@ -44,7 +44,7 @@ SART_FOLDER = "psidata-nfqs-sart-wumpus-train"  # Define where we want to save o
 
 def make_model(n_inputs, n_action_dims, lookback):
     inp = tfkl.Input((n_inputs, lookback), name="states")
-    act = tfkl.Input(n_action_dims, name="actions")  # Changed from (1,) to (n_action_dims,)
+    act = tfkl.Input((n_action_dims,), name="actions")  # Changed from (1,) to (n_action_dims,)
     net = tfkl.Flatten()(inp)
     net = tfkl.concatenate([act, net])
     print("ACT SHAPE", act.shape)
