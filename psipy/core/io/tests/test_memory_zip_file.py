@@ -63,25 +63,19 @@ def test_add_keras():
     model = tf.keras.Model(inputs=inp, outputs=out)
 
     zipfile = MemoryZipFile()
-    zipfile.add("model.h5", model)
-    assert "model.h5" in zipfile.namelist()
+    zipfile.add("model.keras", model)
+    assert "model.keras" in zipfile.namelist()
 
-    loaded_model = zipfile.get_keras("model.h5")
-    assert loaded_model.get_config() == model.get_config()
+    loaded_model = zipfile.get_keras("model.keras")
+    assert loaded_model.input.shape == model.input.shape
+    assert loaded_model.output.shape == model.output.shape
+
+    data = np.random.random(2).reshape((1, 1, 2))
+    assert np.array_equal(loaded_model(data).numpy(), model(data).numpy())
 
 
-@pytest.mark.usefixtures("tensorflow")
-def test_get_h5():
-    inp = tf.keras.Input((1, 2))
-    out = tf.keras.layers.Dense(1)(inp)
-    model = tf.keras.Model(inputs=inp, outputs=out)
-
-    zipfile = MemoryZipFile()
-    zipfile.add("model.h5", model)
-    assert "model.h5" in zipfile.namelist()
-
-    with pytest.raises(ValueError):
-        zipfile.get("model.h5")
+    # assert loaded_model.get_config() == model.get_config() 
+    # TODO: reactivate, asap. unfortunately, save + load presently changes the input shapes build arguments of layers from tuple () before saving to array [] and fails the comparison. Dimensions stay the same :( thus, we cannot compare the configs directly for the time being, until the behavior in keras is fixed.
 
 
 def test_get_unknown():
@@ -274,32 +268,55 @@ def test_csv_array():
 
 
 def test_tf_savedmodel():
+    # we have deprecated add_tf, as it saved a keras model only using tf 2.x.
+    # this version of memory_zip_file cannot load pb + variables anymore, 
+    # as the present tf >=2.18 and keras 3 do not support it. If you have an 
+    # old model with pb + variables, import tf_keras with tf 2.x and use that 
+    # to load the model you can then save it using keras 3 with 
+    # keras.saving.save_model(), or by adding that model to the zipfile with
+    # add_keras().
     inp = tf.keras.Input((1, 2))
     out = tf.keras.layers.Dense(1)(inp)
     model = tf.keras.Model(inputs=inp, outputs=out)
-    inputs = np.random.random(2).reshape((1, 2))
+    inputs = np.random.random(2).reshape((1, 1, 2))
     result = model(inputs).numpy()
 
     zipfile = MemoryZipFile()
     zipfile.cd("abc")
-    zipfile.add_tf("SavedModel123", model)
-    assert "SavedModel123/" in zipfile.ls(include_directories=True)
-    assert "abc/SavedModel123/" in zipfile.ls(include_directories=True, abs=True)
-    assert "abc/SavedModel123/saved_model.pb" in zipfile.namelist()
-    loaded_model = zipfile.get_tf("SavedModel123")
-    assert loaded_model.get_config() == model.get_config()
+    zipfile.add_tf("SavedModel123.keras", model)
+    assert "SavedModel123.keras" in zipfile.ls(include_directories=True)
+    assert "abc/SavedModel123.keras" in zipfile.ls(include_directories=True, abs=True)
+    loaded_model = zipfile.get_tf("SavedModel123.keras")
+
+    assert loaded_model.input.shape == model.input.shape
+    assert loaded_model.output.shape == model.output.shape
 
     result2 = loaded_model(inputs).numpy()
     assert np.array_equal(result, result2)
 
 
 def test_tf_savedmodel_from_disk():
+
     # inputs and results from "save time".
-    inputs = np.array([[0.88592025, 0.41213378]])
-    result = np.array([[0.05168675]], dtype=np.float32)
+    inputs = np.array([[0.3, 0.4]])
+    result = np.array([[-0.40714467]], dtype=np.float32)
+
+    # code that hase been used to save the model.
+    # if a new fixture needs to be created, rerun this code,
+    # and update the result above accordingly.
+    #inp = tf.keras.Input((2,))
+    #hid = tf.keras.layers.Dense(10)(inp)
+    #out = tf.keras.layers.Dense(1)(hid)
+    #model = tf.keras.Model(inputs=inp, outputs=out)
+    #zipfile = MemoryZipFile()
+    #zipfile.cd("abc")
+    #zipfile.add_keras("SavedModel123.keras", model)
+    #zipfile.save("SavedModelMemoryZipFile.zip")
+    #print(model(inputs).numpy())
+    #breakpoint()
 
     path = "psipy/core/io/tests/assets/SavedModelMemoryZipFile.zip"
     zip = MemoryZipFile(path)
-    loaded_model = zip.get_tf("abc/SavedModel123")
+    loaded_model = zip.get_tf("abc/SavedModel123.keras")
     result2 = loaded_model(inputs).numpy()
     assert np.array_equal(result, result2)

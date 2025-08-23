@@ -144,6 +144,8 @@ class MemoryZipFile:
             raise ValueError(
                 "Cannot get .h5 contents. Use specialized get_* methods instead."
             )
+        if ext == ".keras":
+            return self.get_keras(filepath)
         if ext in (".npy", ".npz"):
             return self.get_numpy(filepath)
         if ext == ".csv":
@@ -354,7 +356,7 @@ class MemoryZipFile:
         self.check_exists(filepath)
         return h5py.File(self.get_bytesio(filepath), "r")
 
-    def add_keras(self, targetpath: str, model: tf.keras.Model):
+    def add_keras(self, targetpath: str, model: tf.keras.Model, support_legacy: bool = True):
         """Add a :mod:`tensorflow.keras` model.
 
         .. todo::
@@ -366,6 +368,15 @@ class MemoryZipFile:
             model: Model instance to store.
         """
         self._maybe_open()
+        assert targetpath.endswith(".keras") or targetpath.endswith(".h5")
+
+        if targetpath.endswith(".h5"):
+            if support_legacy:
+                LOG.warning("Saving keras models to h5 files is deprecated. Use .keras instead. We will replace your file ending .h5 with .keras.")
+                targetpath = targetpath[:-3] + ".keras"
+            else:
+                raise ValueError("Saving keras models to h5 files is deprecated. Use .keras instead.")
+
         with TemporaryDirectory() as tmpdir:
             tmppath = path_join(tmpdir, targetpath)
             keras.saving.save_model(model, tmppath)
@@ -436,17 +447,13 @@ class MemoryZipFile:
     def add_tf(self, targetpath: str, model: tf.keras.Model):
         """Add :mod:`tensorflow.keras` model in SavedModel format.
 
+        DEPRECATED: use :meth:`add_keras` instead.
+
         Args:
             targetpath: Location to add the model inside the zipfile.
             model: Model instance to store.
         """
-        self._maybe_open()
-        if os.path.splitext(targetpath)[1] != "":
-            raise ValueError("SavedModel expects directory.")
-        with TemporaryDirectory() as tmpdir:
-            model.save(tmpdir, save_format="tf")
-            self.add_files(targetpath, tmpdir)
-        return self
+        return self.add_keras(targetpath, model)
 
     def get_tf(
         self,
@@ -455,25 +462,23 @@ class MemoryZipFile:
     ) -> tf.keras.Model:
         """Get :mod:`tensorflow.keras` model.
 
+        DEPRECATED: use :meth:`get_keras` instead. we have deprecated get_tf,   
+            and add_tf, as it saved a keras model using tf 2.x. this 
+            version of memory_zip_file cannot load pb + variables anymore, as 
+            the present tf >=2.18 and keras 3 do not support it. If you have an 
+            old model with pb + variables, import tf_keras with tf 2.x and use 
+            that to load the model. You can then save it using keras 3 with 
+            keras.saving.save_model(), or by adding that model to the zipfile 
+            using add_keras(). You can still load from h5 files, just use 
+            get_keras() with support_legacy=True.
+
         Args:
-            path: SavedModel path relative to the zipfile's *current working directory*.
+            path: SavedModel path relative to the zipfile's *current working 
+                directory*.
             custom_objects: May contain a list of objects (for example custom
                 layers) used by the loaded model but not native to Keras.
         """
-        if os.path.splitext(path)[1] != "":
-            raise ValueError("SavedModel expects directory.")
-        path = path if path[-1] == "/" else f"{path}/"
-        self.check_exists(path)
-        object_map: Optional[Dict[str, Callable]] = None
-        if isinstance(custom_objects, dict):
-            object_map = custom_objects
-        elif isinstance(custom_objects, list):
-            object_map = {inspect.unwrap(co).__name__: co for co in custom_objects}
-        with TemporaryDirectory() as tmpdir:
-            files = self.ls(path, abs=True, recursive=True, include_directories=False)
-            self._zipfile.extractall(path=tmpdir, members=files)
-            abspath = path_join(tmpdir, self._cwd, path)
-            return tf.keras.models.load_model(abspath, custom_objects=object_map)
+        return self.get_keras(path, custom_objects)
 
     def get_bytesio(self, filepath: str) -> BinaryIO:
         self.check_exists(filepath)
@@ -618,7 +623,7 @@ class MemoryZipFile:
 
     def infer_ext(self, data):
         if isinstance(data, tf.keras.Model):
-            return "h5"
+            return "keras"
         if isinstance(data, np.ndarray):
             return "npy"
         flat = flatten(data)
