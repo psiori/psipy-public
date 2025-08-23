@@ -52,7 +52,7 @@ editable_install:
 	uv pip install -e ".[dev]"
 
 test: clean
-	python3 -c "import tensorflow as tf; print(tf.GIT_VERSION, tf.VERSION)"
+	python3 -c "import tensorflow as tf; print(tf.version.GIT_VERSION, tf.__version__)"
 	pytest
 	flake8 psipy
 	mypy psipy
