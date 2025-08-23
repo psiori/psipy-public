@@ -69,7 +69,7 @@ dist/psipy.%:
 
 lock:
 	uv pip compile -o requirements.txt requirements.in
-	uv pip compile -o requirements-dev.txt requirements-dev.in requirements.in -c requirements.txt
+	uv pip compile -o requirements-dev.txt requirements-dev.in -c requirements.txt
 
 sync:
 	uv pip sync requirements.txt
