@@ -173,7 +173,6 @@ class TestSARTLogger:
                 logger.append(test_data)
                 total += 1
                 time.sleep(0.001)
-                print(total)
                 if total == 10:
                     writer0 = logger.writer
                     logger.file_rollover_date += 1
@@ -282,7 +281,6 @@ class TestReader:
     def test_load_meta(temp_dir, test_data):
         writer = SARTWriter(temp_dir, "Test", 1)
         writer.append(test_data)
-        print(test_data)
         test_data["state"]["meta"][
             "met/a3"
         ] = "Thisisastringthatislongerthan10characters"

@@ -52,27 +52,38 @@ LOG = logging.getLogger(__name__)
 
 
 def generate_multi_dimensional_action_combinations(legal_values: Tuple[Tuple, ...]) -> np.ndarray:
-    """Generate all possible combinations of multi-dimensional discrete actions.
+    """Generate all possible combinations of multi-dimensional discrete actions and also the combinations of indices of these combined actions.
     
     Args:
-        legal_values: Tuple of tuples, where each inner tuple contains the legal values
-                     for one action dimension.
+        legal_values: Tuple of tuples, where each inner tuple contains the 
+                      legal values for one action dimension.
     
     Returns:
-        Array of shape (N_ACTIONS, N_DIMENSIONS) containing all possible action combinations.
+        Tuple of shape (array(N_ACTIONS, N_DIMENSIONS), array(N_ACTIONS, 
+        N_DIMENSIONS)) containing all possible action combinations in the first 
+        element and the corresponding indices of these combinations in the 
+        second element.
     
     Example:
         >>> legal_values = ((-1, 0, 1), (-1, 0, 1))  # 2D actions with 3 values each
         >>> generate_multi_dimensional_action_combinations(legal_values)
-        array([[-1, -1],
-               [-1,  0],
-               [-1,  1],
-               [ 0, -1],
-               [ 0,  0],
-               [ 0,  1],
-               [ 1, -1],
-               [ 1,  0],
-               [ 1,  1]])
+        (array([[-1., -1.],
+               [-1.,  0.],
+               [-1.,  1.],
+               [ 0., -1.],
+               [ 0.,  0.],
+               [ 0.,  1.],
+               [ 1., -1.],
+               [ 1.,  0.],
+               [ 1.,  1.]]), array([[0, 0],
+               [0, 1],
+               [0, 2],
+               [1, 0],
+               [1, 1],
+               [1, 2],
+               [2, 0],
+               [2, 1],
+               [2, 2]]))
     """
     combinations = list(itertools.product(*legal_values))
     index_combinations = list(itertools.product(*[range(len(dim)) for dim in legal_values]))
@@ -97,7 +108,7 @@ def make_state_action_pairs(
         >>> states.tolist()
         [[1, 2, 3], [1, 2, 3], [4, 5, 6], [4, 5, 6]]
         >>> actions.tolist()
-        [[-1, -2], [-1, -2], [-3, -4], [-3, -4]]
+        [[-1, -2], [-3, -4], [-1, -2], [-3, -4]]
 
         >>> states = dict(a=np.array([[1, 2], [4, 5]]), b=np.array([[3, 6], [7, 8]]))
         >>> actions = np.array([[-1, -2], [-3, -4]])
@@ -107,7 +118,7 @@ def make_state_action_pairs(
         >>> sa["b"].tolist()
         [[3, 6], [3, 6], [7, 8], [7, 8]]
         >>> sa["actions"].tolist()
-        [[-1, -2], [-1, -2], [-3, -4], [-3, -4]]
+        [[-1, -2], [-3, -4], [-1, -2], [-3, -4]]
 
     """
     n_act = len(action_values)

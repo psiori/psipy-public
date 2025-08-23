@@ -26,7 +26,7 @@ Example:
     True
     >>> packed = json_encode(data)
     >>> json_decode(packed)
-    {'dict': ({'of': ('t', 'u')}, ('p', 1), ['e', 's'])}
+    {'dict': ({'of': ('t', 'u')}, ('p', np.int64(1)), ['e', 's'])}
 
 
 .. autosummary::
@@ -144,7 +144,7 @@ def _json_decode_hook(obj: Dict[str, NativelyJSONEncodable]) -> JSONEncodable:
         >>> data = {'dict': ({'of': ('t', 'u')}, ('p', np.int64(1)), ['e', 's'])}
         >>> packed = json.dumps(data, cls=_JSONEncoder)
         >>> json.loads(packed, object_hook=_json_decode_hook)
-        {'dict': ({'of': ('t', 'u')}, ('p', 1), ['e', 's'])}
+        {'dict': ({'of': ('t', 'u')}, ('p', np.int64(1)), ['e', 's'])}
 
     """
     if "__tuple__" in obj and obj["__tuple__"]:
@@ -183,7 +183,7 @@ def json_decode(string: str) -> JSONEncodable:
         >>> data = {'dict': ({'of': ('t', 'u')}, ('p', np.int64(1)), ['e', 's'])}
         >>> packed = json_encode(data)
         >>> json_decode(packed)
-        {'dict': ({'of': ('t', 'u')}, ('p', 1), ['e', 's'])}
+        {'dict': ({'of': ('t', 'u')}, ('p', np.int64(1)), ['e', 's'])}
 
     """
     return json.loads(string, object_hook=_json_decode_hook)

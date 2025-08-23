@@ -53,9 +53,9 @@ def nanlen(seq: Sequence) -> int:
         >>> nanlen(range(10))
         10
         >>> nanlen([1, 2, 3, float("nan")])
-        3
+        np.int64(3)
         >>> nanlen([float("nan")])
-        0
+        np.int64(0)
 
     Args:
         seq: Sequence to get the not-nan length for.
