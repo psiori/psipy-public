@@ -5,13 +5,17 @@
 # Proprietary and confidential, all rights reserved.
 
 import io
+import os
+import tempfile
 
 import h5py
 import numpy as np
 import pytest
 import tensorflow as tf
-import tensorflow.keras as tfk
+import tensorflow.keras as tfk  # for legacy use here
 import tensorflow.keras.layers as tfkl
+
+import keras
 
 from psipy.rl.controllers.layers import ArgMaxLayer, ArgMinLayer, ClipLayer
 from psipy.rl.controllers.layers import ExtractIndexLayer, MinLayer
@@ -26,7 +30,7 @@ class TestArgMinLayer:
         out = ArgMinLayer()
         model = tfk.Model(inp, out(inp))
         assert model(data).numpy().tolist() == [[0], [1], [0]]
-        assert out.output_shape == (None, 1)
+        assert out.output.shape == (None, 1)
 
     @staticmethod
     def test_keepdims_false():
@@ -35,7 +39,7 @@ class TestArgMinLayer:
         out = ArgMinLayer(keepdims=False)
         model = tfk.Model(inp, out(inp))
         assert model(data).numpy().tolist() == [0, 1, 0]
-        assert out.output_shape == (None,)
+        assert out.output.shape == (None,)
 
     @staticmethod
     def test_axis():
@@ -45,28 +49,21 @@ class TestArgMinLayer:
         out = ArgMinLayer(keepdims=False, axis=1)
         model = tfk.Model(inp, out(inp))
         assert model(data).numpy().tolist() == [[1, 1], [0, 0], [0, 0]]
-        assert out.output_shape == (None, 2)
+        assert out.output.shape == (None, 2)
         # "within tuples"
         out = ArgMinLayer(keepdims=False, axis=2)
         model = tfk.Model(inp, out(inp))
         assert model(data).numpy().tolist() == [[0, 1], [0, 1], [0, 0]]
-        assert out.output_shape == (None, 2)
+        assert out.output.shape == (None, 2)
 
     @staticmethod
     def test_saveload():
         inp = tfkl.Input((2, 2))
         out = ArgMinLayer(keepdims=False, axis=0)
         model = tfk.Model(inp, out(inp))
-        # Save model in memory
-        data = io.BytesIO()
-        with h5py.File(data, "w") as h5f:
-            tf.keras.models.save_model(model, h5f, save_format="h5")
-        # Load model from memory
-        with h5py.File(data, "r") as h5f:
-            loaded = tf.keras.models.load_model(
-                h5f,
-                custom_objects={"ArgMinLayer": ArgMinLayer},
-            )
+        filename = os.path.join(tempfile.gettempdir(), "model.keras")
+        keras.saving.save_model(model, filename)
+        loaded = keras.saving.load_model(filename, custom_objects={"ArgMinLayer": ArgMinLayer})
         assert loaded.layers[-1].get_config() == out.get_config()
 
 
@@ -80,7 +77,7 @@ class TestArgMaxLayer:
         model = tfk.Model(inp, out(inp))
         assert model(data).numpy().dtype == np.int64
         assert model(data).numpy().tolist() == [[1], [0], [0]]
-        assert out.output_shape == (None, 1)
+        assert out.output.shape == (None, 1)
 
     @staticmethod
     def test_keepdims_false():
@@ -89,7 +86,7 @@ class TestArgMaxLayer:
         out = ArgMaxLayer(keepdims=False)
         model = tfk.Model(inp, out(inp))
         assert model(data).numpy().tolist() == [1, 0, 0]
-        assert out.output_shape == (None,)
+        assert out.output.shape == (None,)
 
     @staticmethod
     def test_dtype():
@@ -111,28 +108,21 @@ class TestArgMaxLayer:
         model = tfk.Model(inp, out(inp))
         print(model(data).numpy().tolist())
         assert model(data).numpy().tolist() == [[0, 0], [1, 1], [1, 1]]
-        assert out.output_shape == (None, 2)
+        assert out.output.shape == (None, 2)
         # "within tuples"
         out = ArgMaxLayer(keepdims=False, axis=2)
         model = tfk.Model(inp, out(inp))
         assert model(data).numpy().tolist() == [[1, 0], [1, 0], [0, 0]]
-        assert out.output_shape == (None, 2)
+        assert out.output.shape == (None, 2)
 
     @staticmethod
     def test_saveload():
         inp = tfkl.Input((2, 2))
         out = ArgMaxLayer(keepdims=False, axis=0)
         model = tfk.Model(inp, out(inp))
-        # Save model in memory
-        data = io.BytesIO()
-        with h5py.File(data, "w") as h5f:
-            tf.keras.models.save_model(model, h5f, save_format="h5")
-        # Load model from memory
-        with h5py.File(data, "r") as h5f:
-            loaded = tf.keras.models.load_model(
-                h5f,
-                custom_objects={"ArgMaxLayer": ArgMaxLayer},
-            )
+        filename = os.path.join(tempfile.gettempdir(), "model.keras")
+        keras.saving.save_model(model, filename)
+        loaded = keras.saving.load_model(filename, custom_objects={"ArgMaxLayer": ArgMaxLayer})
         assert loaded.layers[-1].get_config() == out.get_config()
 
 
@@ -148,7 +138,7 @@ class TestExtractIndexLayer:
         assert out.compute_output_shape(input_shapes) == (None, 1)
         input_shapes = (tf.TensorShape((None, 2)), tf.TensorShape((None, 1)))
         assert out.compute_output_shape(input_shapes) == (None, 1)
-        assert out.output_shape == (None, 1)
+        assert out.output.shape == (None, 1)
         inputs = np.array([[2, 34]]), np.array([[0]])
         assert model(inputs).numpy().tolist() == [[2]]
         inputs = np.array([[2, 34]]), np.array([[1]])
@@ -175,24 +165,17 @@ def test_cliplayer():
     out = ClipLayer(0.5, 1)
     model = tfk.Model(inp, out(inp))
     assert model(data).numpy().tolist() == [[0.5, 1], [1, 0.5], [1.0, 1]]
-    assert out.output_shape == (None, 2)
+    assert out.output.shape == (None, 2)
 
     inp = tfkl.Input((2,), dtype="int32")
     out = ClipLayer(0, 1)
     model = tfk.Model(inp, out(inp))
     assert model(data).numpy().tolist() == [[0, 1], [1, 0], [1.0, 1]]
-    assert out.output_shape == (None, 2)
+    assert out.output.shape == (None, 2)
 
-    # Save model in memory
-    data = io.BytesIO()
-    with h5py.File(data, "w") as h5f:
-        tf.keras.models.save_model(model, h5f, save_format="h5")
-    # Load model from memory
-    with h5py.File(data, "r") as h5f:
-        loaded = tf.keras.models.load_model(
-            h5f,
-            custom_objects={"ClipLayer": ClipLayer},
-        )
+    filename = os.path.join(tempfile.gettempdir(), "model.keras")
+    keras.saving.save_model(model, filename)
+    loaded = keras.saving.load_model(filename, custom_objects={"ClipLayer": ClipLayer})
     assert loaded.layers[-1].get_config() == out.get_config()
 
 
@@ -205,7 +188,7 @@ class TestMinLayer:
         out = MinLayer()
         model = tfk.Model(inp, out(inp))
         assert model(data).numpy().tolist() == [[0], [0], [12]]
-        assert out.output_shape == (None, 1)
+        assert out.output.shape == (None, 1)
 
     @staticmethod
     def test_keepdims():
@@ -214,7 +197,7 @@ class TestMinLayer:
         out = MinLayer(keepdims=False)
         model = tfk.Model(inp, out(inp))
         assert model(data).numpy().tolist() == [0, 0, 12]
-        assert out.output_shape == (None,)
+        assert out.output.shape == (None,)
 
     @staticmethod
     def test_axis():
@@ -224,26 +207,19 @@ class TestMinLayer:
         out = MinLayer(keepdims=False, axis=1)
         model = tfk.Model(inp, out(inp))
         assert model(data).numpy().tolist() == [[1, 0], [0, 3], [0, 0]]
-        assert out.output_shape == (None, 2)
+        assert out.output.shape == (None, 2)
         # "within tuples"
         out = MinLayer(keepdims=False, axis=2)
         model = tfk.Model(inp, out(inp))
         assert model(data).numpy().tolist() == [[2, 0], [0, 4], [0, 1]]
-        assert out.output_shape == (None, 2)
+        assert out.output.shape == (None, 2)
 
     @staticmethod
     def test_saveload():
         inp = tfkl.Input((2, 2))
         out = MinLayer(keepdims=False, axis=0)
         model = tfk.Model(inp, out(inp))
-        # Save model in memory
-        data = io.BytesIO()
-        with h5py.File(data, "w") as h5f:
-            tf.keras.models.save_model(model, h5f, save_format="h5")
-        # Load model from memory
-        with h5py.File(data, "r") as h5f:
-            loaded = tf.keras.models.load_model(
-                h5f,
-                custom_objects={"MinLayer": MinLayer},
-            )
+        filename = os.path.join(tempfile.gettempdir(), "model.keras")
+        keras.saving.save_model(model, filename)
+        loaded = keras.saving.load_model(filename, custom_objects={"MinLayer": MinLayer})
         assert loaded.layers[-1].get_config() == out.get_config()

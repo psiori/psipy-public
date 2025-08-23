@@ -747,7 +747,7 @@ class NFQ(Controller):
 
     def _save(self, zipfile: MemoryZipFile) -> MemoryZipFile:
         zipfile.add("config.json", self.get_config())
-        zipfile.add("model.h5", self._model)
+        zipfile.add("model.keras", self._model)
         zipfile.add_json(
             "Action.json",
             dict(
@@ -765,7 +765,7 @@ class NFQ(Controller):
         if custom_objects is None:
             custom_objects = [Squeeze, ExpandDims]
         config = zipfile.get("config.json")
-        model = zipfile.get_keras("model.h5", custom_objects)
+        model = zipfile.get_keras("model.keras", custom_objects)
         action_meta = zipfile.get_json("Action.json")
         assert isinstance(action_meta, dict)
         action_type = cls.load_action_type(action_meta, custom_objects)
