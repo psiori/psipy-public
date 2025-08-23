@@ -254,7 +254,7 @@ def dict_merge(dct: Dict, other: Dict, inplace: bool = False) -> Dict:
         if (
             k in dct
             and isinstance(dct[k], dict)
-            and isinstance(other[k], collections.Mapping)
+            and isinstance(other[k], collections.abc.Mapping)
         ):
             # Can use inplace=True here as `dct` already will be a deepcopy of
             # the # original data if the user requested inplace=False initially.
