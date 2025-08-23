@@ -114,14 +114,15 @@ class DQBatch(Sequence):
         #print(">>> immediate cost", costs)
         #print(">>> terminal", terminals)
         #print(">>> q_target before scaling: ", q_target)
-        print(f"\n\n\n>>>>>>>>>>\n\nqtargets n: { len(q_target) } max: {q_target.max()} min: {q_target.min()}")
+        #print(f"\n\n\n>>>>>>>>>>\n\nqtargets n: { len(q_target) } max: {q_target.max()} min: {q_target.min()}")
 
-        for s, a, t, c, qt, sn, v in zip(states, actions, terminals,
-                                         costs, q_target, nextstates, qs):
-            if t:
-                print (">> TERMINAL transition ({}, {}, {}, {}) with qtarget: {} and V(sn)={}".format(s, a, c, sn, qt, v))
+        #for s, a, t, c, qt, sn, v in zip(states, actions, terminals,
+        #                                 costs, q_target, nextstates, qs):
+            #if t:
+                #print (">> TERMINAL transition ({}, {}, {}, {}) with qtarget: {} and V(sn)={}".format(s, a, c, sn, qt, v))
+                #pass
 
-        print ("\n>>>>>>>>>>>> {} TERMINALS\n\n".format(np.sum(terminals)))
+        #print ("\n>>>>>>>>>>>> {} TERMINALS\n\n".format(np.sum(terminals)))
 
         if scale:
             # Update the scaling parameters based on the max and min output of the network, and
@@ -142,7 +143,7 @@ class DQBatch(Sequence):
             # qs[costs.ravel() == 0] = 0.05  #SL in all versions I've seen, this was commented out
 
         #print(">>> qtargets after scaling and setting terminals and clipping", q_target)
-        print(">>> qtargets close to 1: ", (q_target > 0.95).sum())
+        #print(">>> qtargets close to 1: ", (q_target > 0.95).sum())
 
         # Store the q target in the batch; it is altered below if
         # using a prioritized double NFQ in order to reduce dims
@@ -224,7 +225,7 @@ class DQBatch(Sequence):
         net_diff = NET_MAX - NET_MIN
         if out_diff == 0:
             LOG.warning("RESETTING PARAMS")
-            print("RESETTING PARAMS")
+            #print("RESETTING PARAMS")
             ## EXPERIMENTAL ##
             # It seems as if there are max cost episodes only at the beginning
             # of training, the network will collapse to all the same q value,

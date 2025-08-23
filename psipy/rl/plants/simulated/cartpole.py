@@ -84,20 +84,42 @@ class CartPoleState(State):
         "move_ACT",
     )
 
-def make_default_cost_function(x_threshold: float = 2.4,
+
+def make_default_cost_function(x_threshold: float = 3.6,
                                valid_angle: float = None) -> Callable[[np.ndarray], np.ndarray]:
-    def cost_function(state: np.ndarray) -> np.ndarray:
-        x, x_dot, theta, sintheta, costheta, theta_dot, move_ACT = state
+    def cost_function(state: CartPoleState) -> np.ndarray:
 
-        cost = tanh2(theta, C=0.1, mu=0.05) / 10.0
+        DEFAULT_STEP_COST = 0.01
+        TERMINAL_COST = 1.0
 
-        if (abs(x) >= x_threshold):
-            cost = 1.0
+        position = state["cart_position"]
+        cosine = state["pole_cosine"]
 
-        if valid_angle is not None and abs(theta) > valid_angle:
-            cost = 1.0
+        # ZERO COSTS in center of track with pole pointing upwards.
+        # Within the center region of the track, costs are SHAPED
+        # from DEFAULT_STEP_COST (in center, but pole pointing downwards),
+        # to 0.0 (in center, but pole pointing upwards) using the cosine
+        # of the pole angle.
+        costs = (1.0-(cosine+1.0)/2.0) * DEFAULT_STEP_COST
 
-        return cost
+        # DEFAULT COSTS for positions outside the center region of the track.
+        if abs(position) >= 0.2 * x_threshold:
+            costs = DEFAULT_STEP_COST
+
+        if abs(position) >= 0.8 * x_threshold:
+            costs = DEFAULT_STEP_COST * 10 # soft avoidance area before termination
+
+        if valid_angle is not None:
+            if np.arccos(cosine) > valid_angle:
+                costs = TERMINAL_COST
+            elif np.arccos(cosine) > 0.8 * valid_angle:
+                costs = DEFAULT_STEP_COST * 10
+
+        # VERY HIGH TERMINAL COSTS for leaving the track.
+        if abs(position) >= x_threshold:
+            costs = TERMINAL_COST
+
+        return costs
 
     return cost_function
 
@@ -163,7 +185,10 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
             valid_angle: If given, system will be stopped with a termina state if the anlge leaves the valid range abs(angle) > valid_angle.
         """
         if cost_function is None:
-            cost_function = make_default_cost_function(x_threshold)
+            cost_function = make_default_cost_function(
+                x_threshold,
+                valid_angle
+            ) 
             print("CartPole is using default cost function")
       
         super().__init__(cost_function=cost_function)

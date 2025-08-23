@@ -1,7 +1,7 @@
      ____   _____ _____ ____ __   __
-    |  _ \ / ____|_   _|  _ \ \ / /
+    |  _ \ / ____|_   _|  _ \\ \ / /
     | |_) | (___   | | | |_) |\ V / 
-    |  __/ \___ \  | | |  __/  > <  
+    |  __/ \___ \  | | |  __/  > /  
     | |    ____) |_| |_| |    / / 
     |_|   |_____/|_____|_|   /_/
 
@@ -77,7 +77,7 @@ You can also explore the provided tutorials. One of the best ways to familiarize
 2. Launch Jupyter Notebook:
 
    ```
-   jupyter notebook
+   python -m jupyter notebook
    ```
 
 3. In the Jupyter interface that opens in your web browser, locate and click on the "[batch_learning_tutorials.ipynb](./examples/rl/tutorials/batch_learning_tutorials.ipynb)" file to open it.
