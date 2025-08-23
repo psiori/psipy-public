@@ -8,7 +8,6 @@ import sys
 from typing import Callable, Optional, List
 
 from matplotlib import pyplot as plt
-from numpy import cast
 import tensorflow as tf
 from tensorflow.keras import layers as tfkl
 import numpy as np
@@ -167,7 +166,6 @@ def plot_swingup_state_history(
 
     """
     cost = None
-    #plant = cast(CartPole, plant)
 
     x = episode.observations[:, state_channels.index("cart_position")]
     td = episode.observations[:, state_channels.index("cart_velocity")]
