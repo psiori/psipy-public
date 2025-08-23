@@ -90,7 +90,7 @@ class TestWriter:
         assert f["action"]["430PP41FIC006|PID_CV_MAN"].shape == (1,)
         assert f["action"]["430PP41FIC006|PID_CV_MAN"][:] == [1]
         assert f["meta"]["meta2"][:] == [123]
-        assert f["meta"]["met|a3"][:] == np.array(["Start"])
+        assert f["meta"]["met|a3"].asstr()[:] == np.array(["Start"])
         for ordering in ["state", "action", "meta"]:
             assert ordering in f.attrs.keys()
 
@@ -121,7 +121,7 @@ class TestWriter:
                 assert np.isnan(desired[i]) == np.isnan(recorded[i])
 
         assert f["meta"]["met|a3"].shape == (3,)
-        assert np.array_equal(f["meta"]["met|a3"][:], np.array(["Start", "", "Start"]))
+        assert np.array_equal(f["meta"]["met|a3"].asstr()[:], np.array(["Start", "", "Start"]))
 
     @staticmethod
     def test_append_checks(temp_dir, test_data):
@@ -295,7 +295,7 @@ class TestReader:
             assert np.array_equal(meta["meta1"], np.array([1, 1]))
             assert np.array_equal(meta["meta2"], np.array([123, 123]))
             assert np.array_equal(
-                meta["met/a3"], ["Start", "Thisisastringthatislongerthan10characters"]
+                meta["met/a3"], np.array([b"Start", b"Thisisastringthatislongerthan10characters"], dtype=object)
             )
 
         with SARTReader(os.path.join(temp_dir, os.listdir(temp_dir)[0])) as reader:

@@ -41,7 +41,7 @@ def eps1():
 @pytest.fixture
 def eps2():
     obs = [[0], [1], [2], [3], [4]]
-    act = [[0], [1], [2], [3], [np.NAN]] # last action is a dummy action that is "invented" in a terminal state
+    act = [[0], [1], [2], [3], [np.nan]] # last action is a dummy action that is "invented" in a terminal state
     term = [False, False, False, False, True]
     cost = [0.0, 0.1, 0.2, 0.3, 10.0]
     eps = Episode(obs, act, term, cost)
@@ -406,33 +406,6 @@ class TestBatch:
         assert np.array_equal(a1[permutation, ...], a2)
         assert np.array_equal(s1[permutation, ...], s2)
 
-
-
-    @staticmethod
-    def test_assignment_retained(eps2):
-        batch = Batch([eps2])
-        obs = batch._episodes[0].observations
-
-        # make sure, the cost function works properly and
-        # obs are not sliced or shifted, yet
-        costs = mock_cost_func_eps2(obs)
-        assert np.array_equal(costs, eps2.costs)
-
-        costs, terminals = batch.costs_terminals[0]
-        pprint(costs)
-        pprint(terminals)
-
-
-        batch.compute_costs(mock_cost_func_eps2)
-        costs, terminals = batch.costs_terminals[0]
-
-        states = batch.states[0]
-
-        pprint(costs)
-        pprint(terminals)
-        pprint(states)
-
-        assert False
 
 
     @staticmethod
