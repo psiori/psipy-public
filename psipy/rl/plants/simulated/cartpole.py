@@ -175,6 +175,7 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         state_type: Type[CartPoleState] = CartPoleState,
         action_type: Type[CartPoleAction] = CartPoleBangAction,
         render_mode: str = "human",
+        tau: float = 0.02, # seconds between state update, 0.02 / 50 Hz is standard and has been used in the NFQ20 paper
         do_not_reset: bool = False,
         start_angle: float = None,
         valid_angle: float = None,
@@ -215,7 +216,7 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         self.length = 0.5  # actually half the pole's length
         self.polemass_length = self.masspole * self.length
         self.force_mag = 10.0
-        self.tau = 0.02  # seconds between state updates
+        self.tau = tau
         # Friction coefficients
         self.frictioncart = 0.01 * USE_FRICTION  # 5e-4 * USE_FRICTION
         self.frictionpole = 0.01 * USE_FRICTION  # 2e-6 * USE_FRICTION
@@ -437,10 +438,41 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
             gfxdraw.rectangle(self.surf, (int(bar_x), int(bar_y), int(bar_width), int(bar_height)), (0, 0, 0))
 
         self.surf = pygame.transform.flip(self.surf, False, True)
+        
+        # Draw state information in top left corner (after flip)
+        try:
+            import pygame.font
+            pygame.font.init()
+            font = pygame.font.Font(None, 24)  # Default font, size 24
+            
+            # Get state values
+            cart_pos = x[0]  # cart_position
+            cart_vel = x[1]  # cart_velocity
+            pole_angle = x[2]  # pole_angle (in radians)
+            pole_vel = x[5]  # pole_velocity
+            
+            # Convert pole angle to degrees for display
+            pole_angle_deg = math.degrees(pole_angle)
+            
+            # Create text strings
+            cart_text = f"Cart: pos={cart_pos:.2f}, vel={cart_vel:.2f}"
+            pole_text = f"Pole: angle={pole_angle_deg:.1f}°, vel={pole_vel:.2f}"
+            
+            # Render text surfaces
+            cart_surface = font.render(cart_text, True, (0, 0, 0))  # Black text
+            pole_surface = font.render(pole_text, True, (0, 0, 0))  # Black text
+            
+            # Draw text on surface (top left corner)
+            self.surf.blit(cart_surface, (10, 10))
+            self.surf.blit(pole_surface, (10, 35))
+            
+        except ImportError:
+            # If pygame.font is not available, skip text rendering
+            pass
         self.screen.blit(self.surf, (0, 0))
         if self.render_mode == "human":
             pygame.event.pump()
-            self.clock.tick(100) # self.metadata["render_fps"])
+            self.clock.tick(50) # self.metadata["render_fps"])
             pygame.display.flip()
 
         elif self.render_mode == "rgb_array":

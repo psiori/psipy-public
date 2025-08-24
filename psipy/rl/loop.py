@@ -107,6 +107,7 @@ class Loop:
         self.sart = SARTLogger(
             self.logdir, self.name, self.initial_time, sart_rollover, single_sart,
         )
+        self.single_sart = single_sart
 
         # Dictionary of episode statistics as they are run.
         # Contains the total cost and cycles taken per episode, indexed
@@ -127,7 +128,10 @@ class Loop:
         CM.reset()
 
     def run(
-        self, episodes: int = 1, max_episode_steps: int = -1
+        self,
+        episodes: int = 1,
+        max_episode_steps: int = -1,
+        max_writer_steps: Optional[int] = None
     ) -> Dict[int, Dict[str, Any]]:
         """Runs the loop for "episodes" many episodes
 
@@ -136,9 +140,14 @@ class Loop:
         Returns:
             Metrics of the completed episodes
         """
+
         episodes = sys.maxsize - 1 if episodes < 0 else episodes
         for episode in range(1, episodes + 1):
-            break_all = self.run_episode(episode, max_steps=max_episode_steps)
+            break_all = self.run_episode(
+                episode,
+                max_steps=max_episode_steps,
+                max_writer_steps=max_writer_steps,
+            )
             if break_all:
                 break
         return self.metrics
@@ -147,10 +156,12 @@ class Loop:
         self,
         episode_number: int = 1,
         max_steps: int = -1,
+        max_writer_steps: Optional[int] = None,
         initial_state: Optional[State] = None,
         pretty_printer: Optional[LoopPrettyPrinter] = None,
     ) -> bool:
         """Runs a single episode."""
+
         self.trajectory: List[State] = []
         try:
             LOG.info(f"Loop starts, episode {episode_number}...")
@@ -214,6 +225,13 @@ class Loop:
                 if CM.should_stop(max_steps=max_steps):
                     # BUG? the last observation has not been added to the SART, yet! Thus, the last transition will never be used for learning??
                     break
+
+                if (max_writer_steps is not None and 
+                    cycles > 0 and cycles % max_writer_steps == 0
+                ):
+                    LOG.info(f"Max writer steps reached. Rolling over SART file within episode after {cycles} cycles...")
+                    print(f"Max writer steps reached. Rolling over SART file within episode after {cycles} cycles...")
+                    self.sart.do_rollover()
 
                 CM["loop"].tock()
             LOG.info("Loop finished...")
