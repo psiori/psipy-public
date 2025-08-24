@@ -7,7 +7,7 @@
 """Neural Fitted Q-Iteration with Continuous Actions
 ====================================================
 
-See :mod:`psipy.rl.control` for details.
+See :mod:`psipy.rl.controllers` for details.
 
 """
 
@@ -35,7 +35,7 @@ from psipy.rl.preprocessing import StackNormalizer
 from psipy.nn.optimizers.rprop import Rprop
 
 
-__all__ = ["NFQCA"]
+__all__ = ["NFQCA", "NFQCA_Actor"]
 
 
 class NFQCA(Controller):
@@ -416,6 +416,57 @@ class NFQCA(Controller):
         self.maybe_make_model()
         return self._actor
 
+    @classmethod
+    def default_critic_model(
+        cls,
+        state_dim: int,
+        action_dim: int = 1,
+        lookback: int = 1,
+        hidden_dim: int = 256,
+        feature_dim: int = 100,
+    ) -> tf.keras.Model:
+        """Create a default critic model.
+        
+        Args:
+            state_dim: Dimension of the state.
+            action_dim: Dimension of the action. Presently only 1 is supported.
+            lookback: Number of history steps from the state to feed into the critic.
+        """
+        inp = tfkl.Input((state_dim, lookback), name="state_critic")
+        act = tfkl.Input((action_dim,), name="act_in")
+        net = tfkl.Concatenate()([tfkl.Flatten()(inp), act])
+        net = tfkl.Dense(hidden_dim, activation="relu")(net)
+        net = tfkl.Dense(hidden_dim, activation="relu")(net)
+        net = tfkl.Dense(feature_dim, activation="tanh")(net)
+        net = tfkl.Dense(1, activation="sigmoid")(net)
+        model = tf.keras.Model([inp, act], net, name="critic")
+        return model
+
+    @classmethod
+    def default_actor_model(
+        cls,
+        state_dim: int,
+        action_dim: int = 1,
+        lookback: int = 1,
+        hidden_dim: int = 256,
+        feature_dim: int = 100,
+    ) -> tf.keras.Model:
+        """Create a default actor model.
+        
+        Args:
+            state_dim: Dimension of the state.
+            action_dim: Dimension of the action. Presently only 1 is supported.
+            lookback: Number of history steps from the state to feed into the actor.
+        """
+        inp = tfkl.Input((state_dim, lookback), name="state_actor")
+        net = tfkl.Flatten()(inp)
+        net = tfkl.Dense(hidden_dim, activation="relu")(net)
+        net = tfkl.Dense(hidden_dim, activation="relu")(net)
+        net = tfkl.Dense(feature_dim, activation="tanh")(net)
+        net = tfkl.Dense(action_dim, activation="tanh")(net)
+        model = tf.keras.Model(inp, net, name="actor")
+        return model
+
     def fit_critic(
         self,
         batch: Batch,
@@ -713,3 +764,244 @@ class NFQCA(Controller):
         except FileNotFoundError:  # Exploration noise is optional.
             pass
         return obj
+
+
+
+class NFQCA_Actor(Controller):
+    """Pure-actor compatible with the NFQCA class.
+    
+    This class loads only the actor model and relevant settings from NFQCA 
+    saved files, ignoring the critic. It provides a mechanism for random 
+    exploration and can reload the neural network and input transformations 
+    from specified file paths.
+
+    This actor class is prepared to be used in the Collect & Infer paradigm, where the training is separated from the collection of additional data.
+
+    Args:
+        actor: Actor model, ``state`` input, ``action`` output. Output should
+               be ``tanh`` in order for it to be scaled correctly.
+        lookback: Number of history steps from the state to feed into the model.
+        exploration: Exploration :class:`Noise` to use.
+        control_pairs: ``(SP, PV)`` tuples of channel names to each merge into a
+                       single control deviations channel in the neural network's
+                       input.
+        drop_pvs: Whether to drop PV values when creating control pairs.
+        **kwargs: Keyword arguments to pass up to :class:`Controller`.
+    """
+    def __init__(
+        self,
+        actor: tf.keras.Model,
+        lookback: int = 1,
+        exploration: Optional[Noise] = None,
+        control_pairs: Optional[Tuple[Tuple[str, str], ...]] = None,
+        drop_pvs: bool = False,
+        **kwargs,
+    ):
+        super().__init__(
+            lookback=lookback,
+            control_pairs=control_pairs,
+            drop_pvs=drop_pvs,
+            **kwargs,
+        )
+
+        assert self.action_type.dtype == "continuous"
+        assert len(self.action_type.legal_values) == 1, "Only single channel actions."
+        assert actor.output.shape[1] == 1, "Only supports single action actors atm."
+
+        legal_values = self.action_type.get_legal_values(*self.action_channels)
+
+        self.control_pairs = control_pairs
+        self.drop_pvs = drop_pvs
+        self.normalizer = StackNormalizer("meanstd")
+        self.action_normalizer = StackNormalizer("meanmax").fit(
+            np.array(legal_values).T
+        )
+        self.exploration = exploration
+
+        self._memory = ObservationStack((len(self.state_channels),), lookback)
+        self._actor = actor
+
+        # Prepopulate `self.input_channels` and "warmup" neural network prediction.
+        self.get_actions(self._memory.stack[None, ...])
+
+    def _get_action(self, observation: np.ndarray) -> np.ndarray:
+        """Produce a single action value given one observation from the plant.
+
+        Args:
+            observation: Vector of measurements. Currently no images or
+                similar supported!
+
+        Returns:
+            Single action float, although in a ndarray shaped (1,)
+        """
+        self._memory.append(observation)
+        return self.get_actions(self._memory.stack[None, ...])
+
+    def get_actions(self, stacks: np.ndarray) -> np.ndarray:
+        """Computes actions given many state stacks.
+
+        Args:
+            stacks: Observation stacks of shape ``(BATCH, CHANNELS, LOOKBACK)``.
+        """
+        stacks = self.preprocess_observations(stacks)
+        actions = self._actor(stacks).numpy()
+
+        if self.exploration:
+            actions = self.exploration(actions)
+
+        actions = self.action_normalizer.inverse_transform(actions)
+
+        # Currently only a single action per stack-item is supported.
+        actions = actions.ravel()
+
+        # Clip the actions because the network might output a value outside the
+        # range of legal values. In gym environments out of bounds actions might
+        # cause assertion errors, in other processes even undefined behavior.
+        lower, upper = self.action_type.legal_values[0]
+        return np.clip(actions, lower, upper)
+
+    def preprocess_observations(self, stacks: np.ndarray) -> np.ndarray:
+        """Preprocesses observation stacks before those are passed to the network.
+
+        Args:
+          stacks: Observation stacks of shape ``(BATCH, CHANNELS, LOOKBACK)``.
+        """
+        stacks = self.normalizer.transform(stacks)
+        channels = self.state_channels
+        if self.control_pairs is not None:
+            stacks, channels = enrich_errors(
+                stacks, channels, *self.control_pairs, drop_pvs=self.drop_pvs
+            )
+        self.input_channels = channels
+        return stacks
+
+    def notify_episode_starts(self) -> None:
+        """Handles episode start, called from the loop."""
+        pass
+
+    def notify_episode_stops(self) -> None:
+        """Handles post-episode cleanup, called from the loop."""
+        self._memory.clear()
+        if self.exploration:
+            self.exploration.reset()
+
+    def reload(
+            self,
+            file_path: str,
+            load_all_settings: bool = False
+    ) -> None:
+        """Reload the neural network and transformations from a specified file path from within a NFQCA file.
+        
+        Args:
+            file_path: Path to the NFQCA saved file.
+            load_all_settings: If True, read all settings from the file including
+                              exploration settings. If False (default), only reload
+                              the actor model and transformations, preserving current
+                              exploration settings.
+        """
+        
+        # Load the saved file
+        zipfile = MemoryZipFile(file_path)
+
+        top_level = [
+            d for d in zipfile.ls(include_directories=True) if d.endswith("/")
+        ]
+        if len(top_level) == 0:
+            raise ValueError(
+                "No top-level directory found, files contained in zip: "
+                f"{zipfile.ls(include_directories=True, recursive=True)}"
+            )
+        if len(top_level) > 1:
+            raise ValueError(
+                "ZIP ambiguous, multiple top-level directories: "
+                f"{zipfile.ls(include_directories=True)}"
+            )
+        zipfile.cd(top_level[0])
+        zipfile.cd("NFQCA")
+
+        self._reload(zipfile, load_all_settings)
+    
+    def _reload(
+            self,
+            zipfile: MemoryZipFile,
+            load_all_settings: bool = False
+    ) -> None:
+        
+        # Load actor model
+        actor_model = zipfile.get_keras("actor_model.keras", support_legacy=True)
+        
+        # Handle Keras 3 tensor wrapping issue
+        actor_model = tf.keras.Model(
+            inputs=actor_model.inputs[0] if isinstance(actor_model.inputs, (list, tuple)) else actor_model.inputs,
+            outputs=actor_model.outputs[0] if isinstance(actor_model.outputs, (list, tuple)) else actor_model.outputs
+        )
+        
+        # Update the actor model
+        self._actor = actor_model
+        
+        # Load normalizer
+        self.normalizer = StackNormalizer.load(zipfile)
+                
+        if load_all_settings:
+            # Load all settings from config
+            config = zipfile.get("config.json")
+            self.control_pairs = config.get("control_pairs")
+            self.drop_pvs = config.get("drop_pvs", False)
+            
+            # Load exploration if it exists
+            try:
+                self.exploration = Noise.load_impl(zipfile)
+            except FileNotFoundError:
+                self.exploration = None
+
+    def _save(
+        self,
+        zipfile: MemoryZipFile
+    ) -> MemoryZipFile:
+        """Save the actor model and settings to a zipfile."""
+        zipfile.add("config.json", self.get_config())
+        zipfile.add("actor_model.keras", self._actor)
+        zipfile.add_json(
+            "Action.json",
+            dict(
+                class_name=self.action_type.__name__,
+                class_module=self.action_type.__module__,
+            ),
+        )
+        self.normalizer.save(zipfile)
+        if self.exploration:
+            self.exploration.save(zipfile)
+        return zipfile
+
+    @classmethod
+    def _load(
+        cls,
+        zipfile: MemoryZipFile,
+        custom_objects: Optional[List[Type[object]]] = None
+    ) -> "NFQCA_Actor":
+        """Load an NFQCA_Actor instance from a zipfile."""
+        config = zipfile.get("config.json")
+        actor_model = zipfile.get_keras("actor_model.keras", custom_objects, support_legacy=True)
+        action_meta = zipfile.get_json("Action.json")
+        assert isinstance(action_meta, dict)
+
+        # Handle Keras 3 tensor wrapping issue
+        actor_model = tf.keras.Model(
+            inputs=actor_model.inputs[0] if isinstance(actor_model.inputs, (list, tuple)) else actor_model.inputs,
+            outputs=actor_model.outputs[0] if isinstance(actor_model.outputs, (list, tuple)) else actor_model.outputs
+        )
+
+        action_type = cls.load_action_type(action_meta, custom_objects)
+        obj = cls(actor=actor_model, action=action_type, **config)
+        obj.normalizer = StackNormalizer.load(zipfile)
+        
+        # Reconstruct action_normalizer from action type (NFQCA doesn't save it)
+        legal_values = obj.action_type.get_legal_values(*obj.action_channels)
+        obj.action_normalizer = StackNormalizer("meanmax").fit(np.array(legal_values).T)
+        try:
+            obj.exploration = Noise.load_impl(zipfile)
+        except FileNotFoundError:  # Exploration noise is optional.
+            pass
+        return obj 
+
+
