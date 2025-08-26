@@ -34,7 +34,8 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 
 import numpy as np
 
-from psipy.core.io import MemoryZipFile, Saveable, IDMixin
+from psipy.core.io import MemoryZipFile, Saveable
+from psipy.core import IDMixin
 from psipy.rl.core.plant import Action, State
 from psipy.rl.core.plant import Numeric
 
@@ -236,11 +237,13 @@ class ContinuousRandomActionController(Controller):
         action: Type[Action],
         action_channels: Optional[Tuple[str, ...]] = None,
         num_repeat: int = 0,
+        **kwargs,
     ):
         super().__init__(
             state_channels=state_channels,
             action=action,
             action_channels=action_channels,
+            **kwargs,
         )
         if action.dtype != "continuous":
             raise ValueError("Attempting to continuously control discrete action type!")
@@ -273,6 +276,14 @@ class ContinuousRandomActionController(Controller):
             action = self._prev_action
         self._delay_count += 1
         return action
+
+    @classmethod
+    def from_config(cls, config: Dict[str, Any]) -> "ContinuousRandomActionController":
+        return cls(
+            state_channels=config["state_channels"],
+            action=config["action"],
+            **config,
+        )
 
 
 class DiscreteRandomActionController(Controller):

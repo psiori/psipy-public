@@ -4,6 +4,9 @@
 # Copyright (C) PSIORI GmbH, Germany
 # Proprietary and confidential, all rights reserved.
 
+import os
+import re
+import tempfile
 import numpy as np
 import pytest
 
@@ -137,3 +140,59 @@ class TestPartialControllers:
     def test_default_not_partial(disc_action, custom_state):
         c = DiscreteRandomActionController(custom_state.channels(), disc_action)
         assert not c.is_partial()
+
+
+class TestControllerIDMixin:
+    """Test IDMixin functionality integrated into Controller classes."""
+
+    @staticmethod
+    def test_controller_has_unique_id(cont_action, custom_state):
+        """Test that controllers get unique IDs on creation."""
+        controller1 = ContinuousRandomActionController(custom_state.channels(), cont_action)
+        controller2 = ContinuousRandomActionController(custom_state.channels(), cont_action)
+        
+        # Both should have valid IDs
+        assert hasattr(controller1, 'id')
+        assert hasattr(controller2, 'id')
+        
+        # IDs should be different
+        assert controller1.id != controller2.id
+
+    @staticmethod
+    def test_generation_increment(cont_action, custom_state):
+        """Test generation increment functionality."""
+        controller = ContinuousRandomActionController(custom_state.channels(), cont_action)
+        
+        # Should start at generation 0
+        assert controller.id_generation == 0
+        assert controller.id.endswith('_0000')
+        
+        # Increment generation
+        original_strand = controller.id_strand
+        controller.increment_generation()
+        
+        assert controller.id_generation == 1
+        assert controller.id.endswith('_0001')
+        assert controller.id_strand == original_strand  # Strand unchanged
+
+    @staticmethod
+    def test_id_parsing(cont_action, custom_state):
+        """Test ID string parsing and setting."""
+        controller = ContinuousRandomActionController(custom_state.channels(), cont_action)
+        
+        # Set ID from valid string
+        test_id = "20241201143022-A3F2E_0005"
+        controller.set_id_from_string(test_id)
+        
+        assert controller.id == test_id
+        assert controller.id_strand == "20241201143022-A3F2E"
+        assert controller.id_generation == 5
+
+    @staticmethod
+    def test_get_default_basename_uses_id(cont_action, custom_state):
+        """Test that default basename includes the controller ID."""
+        controller = ContinuousRandomActionController(custom_state.channels(), cont_action)
+        basename = controller.get_default_basename()
+        
+        assert basename.startswith("controller-")
+        assert controller.id in basename
