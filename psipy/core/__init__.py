@@ -5,5 +5,6 @@
 # Proprietary and confidential, all rights reserved.
 
 from psipy.core.io import Saveable
+from psipy.core.id_mixin import IDMixin
 
-__all__ = ["Saveable"]
+__all__ = ["Saveable", "IDMixin"]

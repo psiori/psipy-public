@@ -34,7 +34,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 
 import numpy as np
 
-from psipy.core.io import MemoryZipFile, Saveable
+from psipy.core.io import MemoryZipFile, Saveable, IDMixin
 from psipy.rl.core.plant import Action, State
 from psipy.rl.core.plant import Numeric
 
@@ -47,7 +47,7 @@ __all__ = [
 LOG = logging.getLogger(__name__)
 
 
-class Controller(Saveable, metaclass=ABCMeta):
+class Controller(Saveable, IDMixin, metaclass=ABCMeta):
     """Base class for controllers, all controllers implement this interface
 
     Args:
@@ -103,11 +103,17 @@ class Controller(Saveable, metaclass=ABCMeta):
         ...
 
     def get_config(self) -> Dict:
+        self._config["id"] = self.id
         return self._config
 
     @classmethod
     def from_config(cls, config):
-        return cls(**config)
+        obj = cls(**config)
+        obj.set_id_from_string(config["id"])
+        return obj
+
+    def get_default_basename(self) -> str:
+        return f"controller-{ self.id }"
 
     def _save(self, zip: MemoryZipFile) -> MemoryZipFile:
         return zip.add("config.json", self.get_config())
