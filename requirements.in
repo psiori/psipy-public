@@ -15,6 +15,7 @@ scipy
 swig
 tensorflow-probability[tf]~=0.25.0
 tensorflow~=2.18.1
+tensorflow-metal  ; sys_platform == "darwin" and (platform_machine == "arm64" or platform_machine == "aarch64")
 keras~=3.11.3
 tqdm
 xxhash

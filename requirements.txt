@@ -180,6 +180,8 @@ tensorflow==2.18.1
     #   -r requirements.in
     #   tensorflow-probability
     #   tf-keras
+tensorflow-metal  ; sys_platform == "darwin" and (platform_machine == "arm64" or platform_machine == "aarch64")
+
 tensorflow-probability==0.25.0
     # via -r requirements.in
 termcolor==3.1.0
