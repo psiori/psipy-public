@@ -109,6 +109,9 @@ class Controller(IDMixin, Saveable, metaclass=ABCMeta):
         ...
 
     def get_default_basename(self) -> str:
+        return f"controller-{ self.id_strand }"
+
+    def get_default_filename(self) -> str:
         return f"controller-{ self.id }"
 
     def _save(self, zip: MemoryZipFile) -> MemoryZipFile:

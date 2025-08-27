@@ -546,6 +546,8 @@ class NFQCA(Controller):
             batch.compute_costs(costfunc)
 
         for _iteration in range(1, iterations + 1):
+            self.increment_generation()
+            
             # Compute target qs using the next states' predicted q values and bellman.
             batch.set_minibatch_size(-1).sort()
 
@@ -717,6 +719,12 @@ class NFQCA(Controller):
                 :mod:`~psipy.core.io.Saveable` interface.
         """
         raise NotImplementedError("Cannot initialize from config.")
+
+    def get_default_basename(self) -> str:
+        return f"nfqca-{ self.id_strand }"
+
+    def get_default_filename(self) -> str:
+        return f"nfqca-{ self.id }"
 
     def _save(self, zipfile: MemoryZipFile) -> MemoryZipFile:
         zipfile.add("config.json", self.get_config())
