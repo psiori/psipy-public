@@ -169,12 +169,10 @@ class Saveable(metaclass=ABCMeta):
         the current instance of the class using :meth:`from_config`. The
         recreated instance is not necessarily fitted/trained.
         """
-        print(f"get_config: {self._config}") 
         return self._config
 
     def update_config(self: TSaveable, **kwargs) -> None:
         """Adds a value to the config. Call this in the __init__ method of the subclass to pass parameters that should be stored AFTER initialization (e.g. after super().__init__() has been called). You can also call this method whenever the value of a member variable changes. All values in the config are stored and will be passed to the constructor of the class when loading from a zipfile. Call with only explicit parameters, do not pass-in kwargs from other mixins or superclasses."""
-        print(f"update_config: {kwargs}")
         self._config.update(kwargs)
 
     def update_config_from_dict(self: TSaveable, config: Dict[str, Any]) -> None:
