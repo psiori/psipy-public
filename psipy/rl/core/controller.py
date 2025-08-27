@@ -48,7 +48,7 @@ __all__ = [
 LOG = logging.getLogger(__name__)
 
 
-class Controller(Saveable, IDMixin, metaclass=ABCMeta):
+class Controller(IDMixin, Saveable, metaclass=ABCMeta):
     """Base class for controllers, all controllers implement this interface
 
     Args:
@@ -73,6 +73,11 @@ class Controller(Saveable, IDMixin, metaclass=ABCMeta):
             state_channels=state_channels,
             action_channels=self.action_channels,
             **kwargs,
+        )
+        self.update_config(
+            id=self.id,
+            state_channels=state_channels,
+            action_channels=self.action_channels,
         )
         self.action_type = action
         self.state_channels = state_channels
@@ -102,16 +107,6 @@ class Controller(Saveable, IDMixin, metaclass=ABCMeta):
     def _get_action(self, state: np.ndarray) -> np.ndarray:
         """Controller specific get_action."""
         ...
-
-    def get_config(self) -> Dict:
-        self._config["id"] = self.id
-        return self._config
-
-    @classmethod
-    def from_config(cls, config):
-        obj = cls(**config)
-        obj.set_id_from_string(config["id"])
-        return obj
 
     def get_default_basename(self) -> str:
         return f"controller-{ self.id }"

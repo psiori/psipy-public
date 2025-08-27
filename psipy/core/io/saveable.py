@@ -10,9 +10,10 @@ Core functionality for saving and loading classes. Focus on flexibility: All
 different types of models should be saveable in a unified way, no matter
 which library was employed when creating them.
 
+Use this class as a mixin or base class. Make sure to call :meth:`update_config` in the :meth:`__init__` method of the subclass to pass parameters that should be stored AFTER initialization (e.g. after super().__init__() has been called). Complex member types (e.g. classes) should be handled by overwriting :meth:`_save` and :meth:`_load` to handle the serialization and deserialization of the complex data types.
+
 Most end-user functionality is provided through
-:mod:`~psipy.core.io.memory_zip_file`. See that documentation for further details
-on what data can be stored inside a :class:`Saveable`.
+:mod:`~psipy.core.io.memory_zip_file`. See that documentation for further details on what data can be stored inside a :class:`Saveable`.
 
 Also refer to :mod:`psipy.core.io.saveable_sklearn`.
 
@@ -20,7 +21,10 @@ Example:
 
     >>> class Model1(Saveable):
     ...     def __init__(self, arg1=1, arg2=2):
-    ...         Saveable.__init__(self, arg1=arg1, arg2=arg2)
+    ...         super().__init__()
+    ...         self.update_config(arg1=arg1, arg2=arg2)  # call update_config 
+    ...         # to pass parameters that should be stored AFTER initialization 
+    ...         # (e.g. after super().__init__() has been called)
     ...
     ...     def _save(self, zipfile):
     ...         return zipfile.add("config.json", self.get_config())
@@ -32,8 +36,18 @@ Example:
     >>>
     >>> class Model2(Saveable):
     ...     def __init__(self):
-    ...         Saveable.__init__(self)
+    ...         super().__init__()
     ...         self._submodel = Model1()
+    ...         self.value = None
+    ...
+    ...     @property
+    ...     def value(self):
+    ...         return self._value
+    ...
+    ...     @value.setter
+    ...     def value(self, value):
+    ...         self.update_config(value=value)
+    ...         self._value = value
     ...
     ...     def _save(self, zipfile):
     ...         zipfile.add("config.json", self.get_config())
@@ -76,8 +90,14 @@ TSaveable = TypeVar("TSaveable", bound="Saveable")
 class Saveable(metaclass=ABCMeta):
     """Saveable abstract base class.
 
-    Usage: Inherit from this class, implement the :meth:`_save` and
-    :meth:`_load` methods and call its constructor.
+    Usage: Inherit from this class, add built-in datatypes for storage by calling update_config() after super().__init__() has been called and whenever the value of a member variable changes.
+    Overwrite the :meth:`_save` and :meth:`_load` methods to handle the serialization and deserialization of complex member types. What you don't register neither using update_config() nor in the _save() method will not be saved.
+
+    Example:
+        >>> class Model(Saveable):
+        ...     def __init__(self, arg1=1, arg2=2):
+        ...         super().__init__()
+        ...         self.update_config(arg1=arg1, arg2=arg2)
 
     Inside :meth:`save` the primary method one uses is likely
     :meth:`MemoryZipFile.add <psipy.core.io.memory_zip_file.MemoryZipFile.add>`.
@@ -103,7 +123,16 @@ class Saveable(metaclass=ABCMeta):
     _version: ClassVar[Tuple[int, int, int]] = (1, 3, 0)
 
     def __init__(self: TSaveable, **kwargs):
-        super().__init__()
+        super().__init__() # this is a problem for a mixin, because it steels the parameters from "neighboring" mixins and superclasses. This means, Saveable can only be used in a base class, not e.g. in a class B subclassing A, as A might not receive its params. Furthermore, the sequence of the mixins and superclasses now is important. If mixins should be used, the init methods should all be cooperative (passing *args (if allowed in the package) and **kwargs to super().__init__()). Therefore we deprecated this in favor of update_config.
+
+        if kwargs:
+            import warnings
+            warnings.warn(
+                "Passing parameters to Saveable.__init__ is DEPRECATED. "
+                "Use update_config() instead. If this was not intended, please be aware that Saveable.__init__ grasps all parameters passed to it and does not pass them to neither the superclass nor other mixins. This may cause initialization parameters to not reach their desired recipients and lead to unexpected behavior if not used carefully.",
+                DeprecationWarning,
+                stacklevel=2
+            )
         self._config = kwargs
 
     @property
@@ -140,7 +169,17 @@ class Saveable(metaclass=ABCMeta):
         the current instance of the class using :meth:`from_config`. The
         recreated instance is not necessarily fitted/trained.
         """
+        print(f"get_config: {self._config}") 
         return self._config
+
+    def update_config(self: TSaveable, **kwargs) -> None:
+        """Adds a value to the config. Call this in the __init__ method of the subclass to pass parameters that should be stored AFTER initialization (e.g. after super().__init__() has been called). You can also call this method whenever the value of a member variable changes. All values in the config are stored and will be passed to the constructor of the class when loading from a zipfile. Call with only explicit parameters, do not pass-in kwargs from other mixins or superclasses."""
+        print(f"update_config: {kwargs}")
+        self._config.update(kwargs)
+
+    def update_config_from_dict(self: TSaveable, config: Dict[str, Any]) -> None:
+        """Updates the config from a dictionary."""
+        self._config.update(config)
 
     @classmethod
     def from_config(cls: Type[TSaveable], config: Dict[str, Any]) -> TSaveable:

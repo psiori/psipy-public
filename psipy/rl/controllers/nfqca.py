@@ -99,6 +99,10 @@ class NFQCA(Controller):
             optimizer=optimizer,
             **kwargs,
         )
+        print(f"NFQCA __init__: {kwargs}")
+        print(f"NFQCA self.id: {self.id}")
+        print(f"NFQCA self._config: {self._config}")
+        print(f"NFQCA self.get_config(): {self.get_config()}")
 
         assert self.action_type.dtype == "continuous"
         assert len(self.action_type.legal_values) == 1, "Only single channel actions."

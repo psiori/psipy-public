@@ -6,19 +6,29 @@
 
 import re
 from datetime import datetime
+import tempfile
 from unittest.mock import patch
 
 import pytest
 
 from psipy.core.id_mixin import IDMixin
+from psipy.core.io import Saveable
 
 
 class TestIDClass(IDMixin):
     """Simple test class that uses IDMixin for testing purposes."""
     
-    def __init__(self, name="test"):
+    def __init__(self, name="test", **kwargs):
         self.name = name
-        super().__init__()
+        super().__init__(**kwargs)
+
+class TestIDSaveableClass(IDMixin, Saveable):
+    """Simple test class that uses IDMixin for testing purposes."""
+    
+    def __init__(self, name="test", **kwargs):
+        self.name = name
+        super().__init__(**kwargs)  # pass the 
+        self.update_config(name=name, id=self.id)
 
 
 class TestIDMixin:
@@ -294,3 +304,36 @@ class TestIDMixin:
         assert obj.id_generation == generation1 + 1
         assert obj.id != id1  # ID should change
         assert obj.id_strand == strand1  # Strand should not change
+
+
+    def test_save_load_behavior(self):
+        """Test saving and loading preserves ID information. 
+        
+        We test this here, as the there was a bug due to an incompatibility of the IDMixin with the (older) Saveable class."""
+        obj = TestIDSaveableClass()
+        
+        # Get initial state
+        original_id = obj.id
+        original_strand = obj.id_strand
+        original_generation = obj.id_generation
+        
+        # Save to memory
+        with tempfile.NamedTemporaryFile() as tmp:
+            obj.save(tmp.name)
+            print(f"Saved to {tmp.name}")
+
+            # Load into new object
+            loaded_obj = TestIDSaveableClass.load(tmp.name + ".zip")
+            
+            # Check ID components match
+            assert loaded_obj.id == original_id
+            assert loaded_obj.id_strand == original_strand
+            assert loaded_obj.id_generation == original_generation
+            
+            # Verify loaded object maintains functionality
+            assert loaded_obj.name == "test"
+            
+            # Verify generation increment still works
+            loaded_obj.increment_generation()
+            assert loaded_obj.id_generation == original_generation + 1
+            assert loaded_obj.id_strand == original_strand

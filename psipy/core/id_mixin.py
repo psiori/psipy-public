@@ -31,11 +31,15 @@ class IDMixin:
     """
     
     def __init__(self, id: Optional[str] = None, **kwargs):
-        super().__init__(**kwargs)
+        print(f"IN IDMixin __init__: {kwargs}")
+        print(f"IN IDMixin __init__: {id}")
         if id is None:
             self._generate_new_id()
         else:
             self.set_id_from_string(id)
+        print(f"After set id from string: {self.id}")
+        super().__init__(**kwargs)
+        print(f"After super __init__: {self.id}")
     
     def _generate_new_id(self) -> None:
         """Generate a new ID with fresh strand and generation 0."""
