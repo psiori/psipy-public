@@ -35,10 +35,11 @@ Example:
     ...         return cls.from_config(config)
     >>>
     >>> class Model2(Saveable):
-    ...     def __init__(self):
+    ...     def __init__(self, value=None):
     ...         super().__init__()
+    ...         self.update_config(value=value)
     ...         self._submodel = Model1()
-    ...         self.value = None
+    ...         self.value = value
     ...
     ...     @property
     ...     def value(self):
