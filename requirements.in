@@ -19,3 +19,4 @@ tensorflow-metal  ; sys_platform == "darwin" and (platform_machine == "arm64" or
 keras~=3.11.3
 tqdm
 xxhash
+dynaconf

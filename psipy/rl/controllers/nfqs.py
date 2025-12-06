@@ -35,6 +35,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 from tensorflow.keras.utils import Sequence
+from tensorflow.keras import layers as tfkl
 
 from psipy.core.io import MemoryZipFile
 from psipy.core.np_utils import cache
@@ -657,8 +658,70 @@ class NFQs(Controller):
         self.normalizer.fit(observations)
 
     @classmethod
+    def default_model(
+        cls,
+        state_dim: int,
+        action_dim: int = 1,
+        lookback: int = 1,
+        hidden_dim: int = 256,
+        feature_dim: int = 100,
+    ) -> tf.keras.Model:
+        """Create a default model.
+        
+        Args:
+            state_dim: Dimension of the state.
+            action_dim: Dimension of the action.
+            lookback: Number of history steps from the state to feed into the actor.
+        """
+        inp = tfkl.Input((state_dim, lookback), name="states")
+        act = tfkl.Input((action_dim,), name="actions")
+        net = tfkl.Flatten()(inp)
+        net = tfkl.concatenate([act, net])
+        net = tfkl.Dense(hidden_dim, activation="relu")(net)
+        net = tfkl.Dense(hidden_dim, activation="relu")(net)
+        net = tfkl.Dense(feature_dim, activation="tanh")(net)
+        net = tfkl.Dense(1, activation="sigmoid")(net)
+        model = tf.keras.Model([inp, act], net, name="nfqsmodel")
+        return model
+
+    @classmethod
     def from_config(cls, config):
         raise NotImplementedError("Cannot initialize from config.")
+
+    def reload(self,
+               file_path: str,
+               load_all_settings: bool = False
+    ) -> None:
+        # Load the saved file
+        zipfile = MemoryZipFile(file_path)
+
+        top_level = [
+            d for d in zipfile.ls(include_directories=True) if d.endswith("/")
+        ]
+        if len(top_level) == 0:
+            raise ValueError(
+                "No top-level directory found, files contained in zip: "
+                f"{zipfile.ls(include_directories=True, recursive=True)}"
+            )
+        if len(top_level) > 1:
+            raise ValueError(
+                "ZIP ambiguous, multiple top-level directories: "
+                f"{zipfile.ls(include_directories=True)}"
+            )
+        zipfile.cd(top_level[0])
+        zipfile.cd("NFQs")
+
+        self._reload(zipfile, load_all_settings)
+
+    def _reload(self,
+                zipfile: MemoryZipFile,
+                load_all_settings: bool = False
+    ) -> None:
+        self._model = zipfile.get_keras("model.keras", support_legacy=True)
+        self.normalizer = StackNormalizer.load(zipfile)
+
+        if load_all_settings:
+            pass
 
     def _save(self, zipfile: MemoryZipFile) -> MemoryZipFile:
         zipfile.add("config.json", self.get_config())
