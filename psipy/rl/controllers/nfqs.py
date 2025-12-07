@@ -627,6 +627,8 @@ class NFQs(Controller):
         if callbacks is None:
             callbacks = []
 
+        self.increment_generation()
+
         if costfunc is not None:
             batch.compute_costs(costfunc)
 

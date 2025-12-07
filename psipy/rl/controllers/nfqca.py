@@ -372,8 +372,8 @@ class NFQCA(Controller):
         #self.actor_opt = tf.keras.optimizers.RMSprop(learning_rate=0.0001)
         #self.critic_opt = tf.keras.optimizers.SGD(learning_rate=0.0001) 
         #self.actor_opt = tf.keras.optimizers.SGD(learning_rate=0.0001)
-        self.critic_opt = tf.keras.optimizers.Adam(learning_rate=0.00001) # 0.0001 
-        self.actor_opt = tf.keras.optimizers.Adam(learning_rate=0.00001)
+        self.critic_opt = tf.keras.optimizers.Adam(learning_rate=0.0001) # 0.0001 
+        self.actor_opt = tf.keras.optimizers.Adam(learning_rate=0.0001)
 
 
         #self.critic_opt = Rprop()
@@ -546,7 +546,6 @@ class NFQCA(Controller):
             batch.compute_costs(costfunc)
 
         for _iteration in range(1, iterations + 1):
-            self.increment_generation()
             
             # Compute target qs using the next states' predicted q values and bellman.
             batch.set_minibatch_size(-1).sort()
@@ -665,6 +664,8 @@ class NFQCA(Controller):
         """
         if callbacks is None:
             callbacks = []
+
+        self.increment_generation()
 
         # In the original NFQ(CA), the network is reset between iterations,
         # while within each iteration it is trained to convergence from
