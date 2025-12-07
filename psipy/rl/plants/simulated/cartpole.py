@@ -291,6 +291,14 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         x = x + self.tau * x_dot
         theta_dot = theta_dot + self.tau * thetaacc
         theta = theta + self.tau * theta_dot
+
+        # handle overflow of theta below -pi and above pi
+        theta = ((theta + 3* math.pi) % (2* math.pi)) - math.pi 
+        # NOTE: this has the risk of breaking and velocity estimation based on
+        # the angle difference. It's only fine here, as the velocity
+        # calculation (theta_dot) here is done using the cosine and sine of
+        # theta, not the theta or its difference directly.
+
         sin = math.sin(theta)
         cos = math.cos(theta)
 
