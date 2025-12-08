@@ -727,7 +727,7 @@ class NFQs(Controller):
 
     def _save(self, zipfile: MemoryZipFile) -> MemoryZipFile:
         zipfile.add("config.json", self.get_config())
-        zipfile.add("model.h5", self._model)
+        zipfile.add("model.keras", self._model)
         zipfile.add_json(
             "Action.json",
             dict(
@@ -746,7 +746,7 @@ class NFQs(Controller):
         if custom_objects is None:
             custom_objects = [ExpandDims, Squeeze]
         config = zipfile.get("config.json")
-        model = zipfile.get_keras("model.h5", custom_objects)
+        model = zipfile.get_keras("model.keras", custom_objects)
         action_meta = zipfile.get_json("Action.json")
         print("NFQs._load action meta:", action_meta)
         print("NFQs._load config:", config)
