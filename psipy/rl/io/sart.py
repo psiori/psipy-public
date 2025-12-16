@@ -515,12 +515,21 @@ class SARTReader:
     """
 
     def __init__(self, filepath: str):
-        try:
-            self.file = h5py.File(filepath, "r", libver="latest", swmr=True)
-        except OSError as e:
-            if "No such file or directory" in e.args[0]:  # have more informative error
-                raise OSError(f"Unable to open file (does it exist?): {filepath}")
-            raise e
+        repeat=True
+        while repeat:
+
+          try:
+              self.file = h5py.File(filepath, "r", libver="latest", swmr=True)
+          except OSError as e:
+              print ("FILEPATH: ", filepath)
+              print(e)
+              if repeat:
+                  repeat=False
+                  continue
+              if "No such file or directory" in e.args[0]:  # have more informative error
+                  raise OSError(f"Unable to open file (does it exist?): {filepath}")
+              raise e
+          break 
         LOG.debug(f"SART Reader opened `{filepath}` in SWMR mode.")
         self.paths = self._traverse_h5keys(self.file)
 
