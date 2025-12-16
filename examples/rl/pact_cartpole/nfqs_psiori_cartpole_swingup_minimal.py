@@ -115,7 +115,7 @@ cost_function = make_sparse_cost_func(
 ActionType = SwingupContinuousDiscreteAction
 StateType = SwingupState
 
-SwingupPlant(
+Plant = SwingupPlant(
         hostname="127.0.0.1",   # if you run the script on your computer, not the blue box, change this to the IP of the blue box (e.g. 192.168.177.145)
         hilscher_port="5555",
         sway_start=False,
@@ -158,7 +158,7 @@ try:
 except FileNotFoundError:
     print(f"No episodes found in {SART_FOLDER}. I will start from scratch.")
 
-loop = Loop(Plant, nfqs, f"CartPole", SART_FOLDER, render=RENDER)
+loop = Loop(Plant, nfqs, f"CartPole", SART_FOLDER, render=False)
 
 nfqs.epsilon = EPSILON
 
