@@ -336,6 +336,7 @@ class NFQs(Controller):
         optimizer: Union[str, tf.keras.optimizers.Optimizer] = "Adam",
         prioritized: bool = False,
         disable_terminals: bool = True,
+        return_q_values: bool = False,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -356,6 +357,7 @@ class NFQs(Controller):
         self._optimizer = optimizer
         self._model = model
         self.control_pairs = control_pairs
+        self.return_q_values = return_q_values
 
         LOG.debug("ACTION VALUES HANDED TO INIT", action_values)
 
@@ -424,12 +426,11 @@ class NFQs(Controller):
         if self.idoe:
             self.idoe_state = np.zeros((1, len(self.action_channels)))
 
-    def get_action(self, state: State) -> Action:
+    def get_action(self, state: State, return_q_values: bool = None) -> Action:
         observation = state.as_array(*self.state_channels)
         stack = self._memory.append(observation).stack
 
-
-        action, meta = self.get_actions(stack[None, ...])
+        action, meta, q_values = self.get_actions(stack[None, ...], return_q_values=True)
         assert action.shape[0] == 1
         action = action.ravel()
 
@@ -440,10 +441,17 @@ class NFQs(Controller):
                 individual_meta[f"{channel}_{key}"] = value.item()
 
         mapping = dict(zip(self.action_channels, action))
-        return self.action_type(mapping, additional_data=individual_meta)
+        action = self.action_type(mapping, additional_data=individual_meta)
+
+        if return_q_values is False or (return_q_values is None and self.return_q_values is False):
+            return action
+        else:
+            return action, q_values.ravel()
 
     def get_actions(
-        self, stacks: np.ndarray
+        self,
+        stacks: np.ndarray,
+        return_q_values: bool = False
     ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
         """Gets the actions for given stacks of observations.
 
@@ -453,6 +461,9 @@ class NFQs(Controller):
         Args:
             stack: ``(N, CHANNELS, LOOKBACK)`` shaped stacks of observations.
         """
+
+        q_values = None
+    
         if random.random() < self.epsilon or self.action_repeat > 0:
             if self.action_repeat == 0:
                 action_indices = np.random.randint(
@@ -485,9 +496,14 @@ class NFQs(Controller):
             else:
                 meta = dict(nodoe=actions)
             self.action_repeat = 0
+    
         if self.idoe:
             actions = self.doe_transform(actions)
-        return actions, meta
+
+        if return_q_values:
+            return actions, meta, q_values
+        else:
+            return actions, meta
     
 
     @property
