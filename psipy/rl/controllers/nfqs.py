@@ -29,7 +29,7 @@ import itertools
 import random
 import sys
 import time
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
 
 import numpy as np
 import tensorflow as tf
@@ -336,7 +336,7 @@ class NFQs(Controller):
         optimizer: Union[str, tf.keras.optimizers.Optimizer] = "Adam",
         prioritized: bool = False,
         disable_terminals: bool = True,
-        return_q_values: bool = False,
+        return_meta: bool = True,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -357,7 +357,7 @@ class NFQs(Controller):
         self._optimizer = optimizer
         self._model = model
         self.control_pairs = control_pairs
-        self.return_q_values = return_q_values
+        self._return_meta = return_meta
 
         LOG.debug("ACTION VALUES HANDED TO INIT", action_values)
 
@@ -426,32 +426,32 @@ class NFQs(Controller):
         if self.idoe:
             self.idoe_state = np.zeros((1, len(self.action_channels)))
 
-    def get_action(self, state: State, return_q_values: bool = None) -> Action:
+    def get_action(self, state: State) -> Action:
         observation = state.as_array(*self.state_channels)
         stack = self._memory.append(observation).stack
 
-        action, meta, q_values = self.get_actions(stack[None, ...], return_q_values=True)
+        action, meta_channels, q_values, is_random = self._get_action(stack[None, ...])
         assert action.shape[0] == 1
         action = action.ravel()
+        mapping = dict(zip(self.action_channels, action))
 
         # Splitting the meta data vectors into the individual action channels.
-        individual_meta = dict()
-        for key, values in meta.items():
+        additional_data = dict()
+        for key, values in meta_channels.items():
             for channel, value in zip(self.action_channels, values[0]):
-                individual_meta[f"{channel}_{key}"] = value.item()
+                additional_data[f"{channel}_{key}"] = value.item()
 
-        mapping = dict(zip(self.action_channels, action))
-        action = self.action_type(mapping, additional_data=individual_meta)
+        if self._return_meta:
+            additional_data['meta'] = dict[str, Any](
+                q_values=q_values.ravel(),
+                random=is_random,
+            )
+        return self.action_type(mapping, additional_data=additional_data)
 
-        if return_q_values is False or (return_q_values is None and self.return_q_values is False):
-            return action
-        else:
-            return action, q_values.ravel()
 
-    def get_actions(
+    def _get_action(
         self,
         stacks: np.ndarray,
-        return_q_values: bool = False
     ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
         """Gets the actions for given stacks of observations.
 
@@ -462,9 +462,16 @@ class NFQs(Controller):
             stack: ``(N, CHANNELS, LOOKBACK)`` shaped stacks of observations.
         """
 
-        q_values = None
+        # Predict Q values for the given stacks always, for metadata purposes.
+        net_inputs = self.preprocess_observations(stacks) # also normalizes
+        net_inputs = make_state_action_pairs(stacks, self.action_values_normalized)
+
+        with CM["get-actions-predict"]:
+            q_values = self._model(net_inputs).numpy()
+
+        is_random = random.random() < self.epsilon or self.action_repeat > 0
     
-        if random.random() < self.epsilon or self.action_repeat > 0:
+        if is_random:
             if self.action_repeat == 0:
                 action_indices = np.random.randint(
                     low=0, high=len(self.action_values), size=(stacks.shape[0], 1)
@@ -483,11 +490,6 @@ class NFQs(Controller):
                 actions, meta = cast(Tuple, self._prev_raw_act_and_meta)
                 self.action_repeat -= 1
         else:
-            stacks = self.preprocess_observations(stacks)
-            stacks = make_state_action_pairs(stacks, self.action_values_normalized)
-
-            with CM["get-actions-predict"]:
-                q_values = self._model(stacks).numpy()
             action_indices = argmin_q(q_values, len(self.action_values))
             action_indices = action_indices.astype(np.int32).ravel()
             actions = self.action_values[action_indices]  # shape (N, ACT_DIM)  
@@ -500,11 +502,7 @@ class NFQs(Controller):
         if self.idoe:
             actions = self.doe_transform(actions)
 
-        if return_q_values:
-            return actions, meta, q_values
-        else:
-            return actions, meta
-    
+        return actions, meta, q_values, is_random
 
     @property
     def action_normalizer(self):
@@ -532,7 +530,7 @@ class NFQs(Controller):
     def preprocess_observations(self, stacks: np.ndarray) -> np.ndarray:
         """Preprocesses observation stacks before those are passed to the network.
 
-        Employed in both the local :meth:`get_actions` method as well as in the
+        Employed in both the local :meth:`_get_action` method as well as in the
         :class:`~Batch` during training.
 
         Args:
