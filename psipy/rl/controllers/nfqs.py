@@ -8,15 +8,15 @@
 ==========================================
 
 Implementation of a Neural Fitted Q controller, that includes both state and
-action as input and returns a single q value as output. This stands in contrast
-to :mod:`~psipy.rl.control.nfq`, where the network receives only the state as
-input and returns one q value per discrete action as output.
+action as input and returns a single q value as output. This stands in
+contrast to :mod:`~psipy.rl.control.nfq`, where the network receives only the
+state as input and returns one q value per discrete action as output.
 
 A central advantage of using actions as part of the input is that continuous
-values of actions can be used and discretization of action values can be defined
-at runtime. Additionally one does not need to keep track of action indices (in
-contrast to :mod:`~psipy.rl.control.nfq`) and therefore is more flexible of
-applying the algorithm to historic and/or off-policy data.
+values of actions can be used and discretization of action values can be
+defined at runtime. Additionally one does not need to keep track of action
+indices (in contrast to :mod:`~psipy.rl.control.nfq`) and therefore is more
+flexible of applying the algorithm to historic and/or off-policy data.
 
 .. autosummary::
 
@@ -427,10 +427,12 @@ class NFQs(Controller):
             self.idoe_state = np.zeros((1, len(self.action_channels)))
 
     def get_action(self, state: State) -> Action:
+        """ WARNING: this method must be called in each cycle, exactly once, because
+        it updates the internal memory and state of the controller."""
         observation = state.as_array(*self.state_channels)
         stack = self._memory.append(observation).stack
 
-        action, meta_channels, q_values, is_random = self._get_action(stack[None, ...])
+        action, meta_channels, chosen_q_values, q_values, is_random = self._get_action(stack[None, ...])
         assert action.shape[0] == 1
         action = action.ravel()
         mapping = dict(zip(self.action_channels, action))
@@ -443,20 +445,38 @@ class NFQs(Controller):
 
         if self._return_meta:
             additional_data['meta'] = dict[str, Any](
-                q_values=q_values.ravel(),
-                random=is_random,
+                q_value=chosen_q_values.ravel()[0], # q value of the chosen action
+                q_values=q_values.ravel(),       # q values of all options for evaluation purposes
+                random=is_random,                # whether the action was chosen randomly for evaluation purposes
             )
         return self.action_type(mapping, additional_data=additional_data)
+
+
+    def get_q_value(self, action: Action) -> float:
+        """ returns the q-value of the given action for the present history of states."""
+        stacks = self._memory.stack[None, ...]
+        net_inputs = self.preprocess_observations(stacks) # also normalizes
+        normalized_action = self.action_normalizer.transform(action.as_array(*self.action_channels)[None, ...])
+        net_inputs = make_state_action_pairs(stacks, normalized_action)
+        q_values = self._model(net_inputs).numpy()
+        assert(q_values.ravel().shape[0] == 1)
+        return q_values.ravel()[0]
 
 
     def _get_action(
         self,
         stacks: np.ndarray,
-    ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
+    ) -> Tuple[np.ndarray, Dict[str, np.ndarray], np.ndarray, np.ndarray, bool]:
         """Gets the actions for given stacks of observations.
 
         Returns an additional metadata dict containing the NFQ action indices
         and the original action values before the postprocessing step.
+
+        TODO: if this method should be used to get actions for a batch of states,
+              which the documentation hints to and which is necesary in SARSA, or
+              NFQCA like learners, it needs to be adjusted regarding the 
+              random action selection, which will not work (correctly / as
+              intended) for batches as is.
 
         Args:
             stack: ``(N, CHANNELS, LOOKBACK)`` shaped stacks of observations.
@@ -498,11 +518,13 @@ class NFQs(Controller):
             else:
                 meta = dict(nodoe=actions)
             self.action_repeat = 0
+
+        chosen_q_values = q_values[action_indices]  # one value per state, multiple, if batch of states.
     
         if self.idoe:
             actions = self.doe_transform(actions)
 
-        return actions, meta, q_values, is_random
+        return actions, meta, chosen_q_values, q_values, is_random
 
     @property
     def action_normalizer(self):
