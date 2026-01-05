@@ -484,7 +484,7 @@ class NFQs(Controller):
 
         # Predict Q values for the given stacks always, for metadata purposes.
         net_inputs = self.preprocess_observations(stacks) # also normalizes
-        net_inputs = make_state_action_pairs(stacks, self.action_values_normalized)
+        net_inputs = make_state_action_pairs(net_inputs, self.action_values_normalized)
 
         with CM["get-actions-predict"]:
             q_values = self._model(net_inputs).numpy()
