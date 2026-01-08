@@ -66,7 +66,9 @@ class DQBatch(Sequence):
         scale: bool = False,
         clamp_terminal_costs: bool = False,
         clip_qtargets: bool = False,
+        **kwargs,
     ):
+        super().__init__(**kwargs)
         global CSV
         self.batch = batch
         self.act_model = act_model
@@ -807,14 +809,6 @@ class NFQ(Controller):
 
         config = self.get_config()
         # Remove 'action_values' from the config
-        config.pop('action_values', None)
+        config.pop("action_values", None)
 
         return NFQ(model=new_model, action=action_type, **config)
-
-
-
-
-
-
-
-

@@ -179,7 +179,9 @@ class PickyBatch(Sequence):
         doubleq: bool = False,
         prioritized: bool = False,
         disable_terminals: bool = False,
+        **kwargs,
     ):
+        super().__init__(**kwargs)
         self.batch = batch
         self.action_values_normalized = action_values_normalized
         self.model = model
