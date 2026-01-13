@@ -1,5 +1,6 @@
 import json
 import zmq
+import time
 import numpy as np
 from typing import Optional
 from psipy.rl.core.plant import Plant, State, Action
@@ -133,6 +134,7 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
                  alternating_set_points: bool = False,
                  hoist_active: bool = False,
                  action_type: AutocraneAction = None, 
+                 max_hz: float = 4.0,
                  **kwargs):
         """
         Initializes the AutocraneZMQProxyPlant.
@@ -141,7 +143,12 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
             state_sub_address (str): The address of the ZMQ subscriber socket for receiving states.
             action_pub_address (str): The address of the ZMQ publisher socket for sending actions.
             randomize_set_points (bool): Whether to randomize set points.
+            max_hz: Limit how often we change the action we send out to core.
+                    When _get_next_state gets called before 1/max_hz seconds after the last new action was sent,
+                    the action will be ignored and the previous action will be sent again.
         """
+        if self.max_hz <= 0.0:
+            raise ValueError("max_hz must be greater than 0.0")
 
         if action_type is not None:
             self.action_type = action_type
@@ -150,12 +157,12 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
 
         super().__init__(**kwargs)
         self.context = zmq.Context()
-        
+
         # Subscriber socket for receiving states
         self.state_socket = self.context.socket(zmq.SUB)
         self.state_socket.connect(state_sub_address)
         self.state_socket.setsockopt_string(zmq.SUBSCRIBE, "")
-        
+
         # Publisher socket for sending actions
         self.action_socket = self.context.socket(zmq.PUB)
         self.action_socket.setsockopt(zmq.CONFLATE, 1)
@@ -163,6 +170,11 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         self.action_socket.connect(action_pub_address)
 
         self._last_cycle_number = 0
+
+        # Limit how often we change the action we send out to core. W
+        self.max_hz = max_hz
+        self.last_action_dict = None
+        self.last_action_time = None
         
         # Set point related attributes
         self._randomize_set_points = randomize_set_points
@@ -418,6 +430,27 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
                 continue
         return latest_message
 
+    def send_action(self, action_dict: dict) -> None:
+        """
+        Sends an action to the Autocrane system.
+        """
+        # If the last new action was sent less than 1/max_hz seconds ago, send the last action again
+        if (
+            self.last_action_time is not None
+            and time.time() - self.last_action_time < 1 / self.max_hz
+        ):
+            if self.last_action_dict is None:
+                raise ValueError("No last action dict found")
+
+            # TODO: Do we even need to send the last action again?
+            # Add a warning?
+            self.action_socket.send_json(self.last_action_dict)
+            return
+
+        self.last_action_time = time.time()
+        self.last_action_dict = action_dict
+        self.action_socket.send_json(action_dict)
+
     def _get_next_state(self, state: AutocraneState, action: AutocraneAction) -> AutocraneState:
         """
         Sends an action to the Autocrane system and receives the next state.
@@ -426,7 +459,7 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         # Send the action to the autocrane agent
         action_dict = self._action_dict_from_action(action, self._last_cycle_number)
         # print("Sending action to autocrane agent:", action_dict)
-        self.action_socket.send_json(action_dict)
+        self.send_action(action_dict)
 
         # Receive the next state from the autocrane agent
         latest_message = self._receive_message()
