@@ -1,9 +1,11 @@
 import json
-import zmq
 import time
-import numpy as np
 from typing import Optional
-from psipy.rl.core.plant import Plant, State, Action
+
+import numpy as np
+import zmq
+
+from psipy.rl.core.plant import Action, Plant, State
 
 """
     ZMQ Proxy Plant for Autocrane
@@ -147,8 +149,8 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
                     When _get_next_state gets called before 1/max_hz seconds after the last new action was sent,
                     the action will be ignored and the previous action will be sent again.
         """
-        if self.max_hz <= 0.0:
-            raise ValueError("max_hz must be greater than 0.0")
+        if max_hz <= 0.0:
+            raise ValueError("max_hz must be greater than 0.0 but was {max_hz}")
 
         if action_type is not None:
             self.action_type = action_type
