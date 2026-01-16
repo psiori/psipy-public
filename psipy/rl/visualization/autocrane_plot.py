@@ -90,20 +90,16 @@ class AutocraneTrolleyTrajectoryPlot:
         axis_counter = 0
 
 
-        # We cannot get the target directly, but we know our current position and the distance
-        # to the target, so we can get the target from that
         set_point_delta = self.episode.observations[:, self.trolley_set_point_delta_idx]
-        targets = x - set_point_delta # All approximately the same
-        target = targets[0]
-        self.axs[axis_counter].plot(x, label="trolley_position")
-        self.axs[axis_counter].axhline(target, color="grey", linestyle=":", label="target")
+        self.axs[axis_counter].plot(set_point_delta, label="set_point_delta")
+        self.axs[axis_counter].axhline(0, color="grey", linestyle=":", label="target")
         # Add blue shaded area of ±0.4m around target to show acceptable deviation
-        self.axs[axis_counter].axhspan(target-self.trolley_margin, 
-                                       target+self.trolley_margin, 
+        self.axs[axis_counter].axhspan(-self.trolley_margin, 
+                                       self.trolley_margin, 
                                        color='grey', alpha=0.2, label='acceptable range')
         # Add darker blue lines at boundaries
-        self.axs[axis_counter].axhline(target-self.trolley_margin, color='grey', alpha=0.5)
-        self.axs[axis_counter].axhline(target+self.trolley_margin, color='grey', alpha=0.5)
+        self.axs[axis_counter].axhline(-self.trolley_margin, color='grey', alpha=0.5)
+        self.axs[axis_counter].axhline(self.trolley_margin, color='grey', alpha=0.5)
         self.axs[axis_counter].set_title("trolley_position")
         self.axs[axis_counter].set_ylabel("Position")
         self.axs[axis_counter].set_ylim((-4.5, 4.5))
