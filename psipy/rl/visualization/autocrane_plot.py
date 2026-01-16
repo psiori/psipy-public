@@ -15,9 +15,11 @@ class AutocraneTrolleyTrajectoryPlot:
                  hoist_vel_idx: int = 5,
                  do_plot_hoist: bool = False,
                  do_display: bool = True,
-                 trolley_margin = 0.3,
-                 hoist_margin = 0.1,
-                 sway_margin = 0.04):
+                 trolley_margin: float = 0.3,
+                 hoist_margin: float = 0.1,
+                 sway_margin: float = 0.04,
+                 trolley_set_point_delta_idx: int = 21):
+        self.trolley_set_point_delta_idx = trolley_set_point_delta_idx
         self.trolley_position_idx = trolley_position_idx
         self.trolley_vel_idx = trolley_vel_idx
         self.trolley_sway_idx = trolley_sway_idx
@@ -40,7 +42,7 @@ class AutocraneTrolleyTrajectoryPlot:
         self.title_string = None
 
     def update(self, episode: Episode,
-               episode_num: int = None, title_string: str = None):
+               episode_num: int | None = None, title_string: str | None = None):
         self.episode = episode
         self.episode_num = episode_num
         self.title_string = title_string
@@ -66,7 +68,7 @@ class AutocraneTrolleyTrajectoryPlot:
                 self.fig, self.axs = plt.subplots(6, figsize=(10, 10))
             else:
                 self.fig, self.axs = plt.subplots(4, figsize=(10, 8))
-            self.fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+            self.fig.tight_layout(rect=(0., 0.03, 1., 0.95))
         elif not self._is_notebook():
             plt.figure(self.fig.number)
             
@@ -88,15 +90,20 @@ class AutocraneTrolleyTrajectoryPlot:
         axis_counter = 0
 
 
+        # We cannot get the target directly, but we know our current position and the distance
+        # to the target, so we can get the target from that
+        set_point_delta = self.episode.observations[:, self.trolley_set_point_delta_idx]
+        targets = x - set_point_delta # All approximately the same
+        target = targets[0]
         self.axs[axis_counter].plot(x, label="trolley_position")
-        self.axs[axis_counter].axhline(0, color="grey", linestyle=":", label="target")
+        self.axs[axis_counter].axhline(target, color="grey", linestyle=":", label="target")
         # Add blue shaded area of ±0.4m around target to show acceptable deviation
-        self.axs[axis_counter].axhspan(-self.trolley_margin, 
-                                       self.trolley_margin, 
+        self.axs[axis_counter].axhspan(target-self.trolley_margin, 
+                                       target+self.trolley_margin, 
                                        color='grey', alpha=0.2, label='acceptable range')
         # Add darker blue lines at boundaries
-        self.axs[axis_counter].axhline(-self.trolley_margin, color='grey', alpha=0.5)
-        self.axs[axis_counter].axhline(self.trolley_margin, color='grey', alpha=0.5)
+        self.axs[axis_counter].axhline(target-self.trolley_margin, color='grey', alpha=0.5)
+        self.axs[axis_counter].axhline(target+self.trolley_margin, color='grey', alpha=0.5)
         self.axs[axis_counter].set_title("trolley_position")
         self.axs[axis_counter].set_ylabel("Position")
         self.axs[axis_counter].set_ylim((-4.5, 4.5))
