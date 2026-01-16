@@ -90,7 +90,7 @@ class ExpandableDataset:
             # Therefore, it is set as None, and will default to "".
             self.dtype = h5py.string_dtype()
             self.fill_val = None
-        
+
         self.dataset = hdf5_file.create_dataset(
             hdf_path,
             shape=(buffer_size, *shape),
@@ -115,9 +115,17 @@ class ExpandableDataset:
 
     def _resize(self, rows: int) -> None:
         try:
+            if not hasattr(self, "dataset") or self.dataset is None:
+                return
+            try:
+                if not self.dataset.id.valid:
+                    return
+            except (ValueError, RuntimeError, AttributeError):
+                return
             self.dataset.resize((rows, *self.incoming_shape))
-        except ValueError as e:
-            if not str(e).startswith("Not a dataset") and not str(e).startswith("Invalid dataset identifier"):
+        except (ValueError, RuntimeError) as e:
+            error_str = str(e).lower()
+            if "unable to synchronously get dataspace" not in error_str:
                 raise e
 
     def _maybe_expand(self) -> None:
@@ -426,7 +434,7 @@ class SARTLogger:
         self.episode_count = 0
         self.episode_file_count = 0
         self.sample_count = 0
-        #self.file_rollover_date = None
+        # self.file_rollover_date = None
 
     def __del__(self):
         self.shutdown()
@@ -515,21 +523,21 @@ class SARTReader:
     """
 
     def __init__(self, filepath: str):
-        repeat=True
+        repeat = True
         while repeat:
-
-          try:
-              self.file = h5py.File(filepath, "r", libver="latest", swmr=True)
-          except OSError as e:
-              print ("FILEPATH: ", filepath)
-              print(e)
-              if repeat:
-                  repeat=False
-                  continue
-              if "No such file or directory" in e.args[0]:  # have more informative error
-                  raise OSError(f"Unable to open file (does it exist?): {filepath}")
-              raise e
-          break 
+            try:
+                self.file = h5py.File(filepath, "r", libver="latest", swmr=True)
+            except OSError as e:
+                print("FILEPATH: ", filepath)
+                print(e)
+                if repeat:
+                    repeat = False
+                    continue
+                if "No such file or directory" in e.args[0]:
+                    # have more informative error
+                    raise OSError(f"Unable to open file (does it exist?): {filepath}")
+                raise e
+            break
         LOG.debug(f"SART Reader opened `{filepath}` in SWMR mode.")
         self.paths = self._traverse_h5keys(self.file)
 

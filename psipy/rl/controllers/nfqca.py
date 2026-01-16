@@ -430,7 +430,7 @@ class NFQCA(Controller):
         feature_dim: int = 100,
     ) -> tf.keras.Model:
         """Create a default critic model.
-        
+
         Args:
             state_dim: Dimension of the state.
             action_dim: Dimension of the action. Presently only 1 is supported.
@@ -456,7 +456,7 @@ class NFQCA(Controller):
         feature_dim: int = 100,
     ) -> tf.keras.Model:
         """Create a default actor model.
-        
+
         Args:
             state_dim: Dimension of the state.
             action_dim: Dimension of the action. Presently only 1 is supported.
@@ -801,6 +801,7 @@ class NFQCA_Actor(Controller):
         drop_pvs: Whether to drop PV values when creating control pairs.
         **kwargs: Keyword arguments to pass up to :class:`Controller`.
     """
+
     def __init__(
         self,
         actor: tf.keras.Model,

@@ -1,8 +1,8 @@
      ____   _____ _____ ____ __   __
     |  _ \ / ____|_   _|  _ \\ \ / /
-    | |_) | (___   | | | |_) |\ V / 
-    |  __/ \___ \  | | |  __/  > /  
-    | |    ____) |_| |_| |    / / 
+    | |_) | (___   | | | |_) |\ V /
+    |  __/ \___ \  | | |  __/  > /
+    | |    ____) |_| |_| |    / /
     |_|   |_____/|_____|_|   /_/
 
 # PSIORI's Machine Learning Library -- The Public Part
@@ -31,35 +31,40 @@ cd psipy-public
 uv pip sync requirements-dev.txt    # or requirements.txt if you don't need the dev infrastructure
 uv pip install -e ".[dev]"
 ```
+
 The option '-e' is used to install the package in editable mode, which allows you to make changes to the code and have them reflected in the installed package without having to reinstall. Skip this option if you do not plan on making changes to the code of psipy itself.
 
-The options '[dev]' is used to install additional dependencies for the development environment (inclduing pytest and jupyter).
+The options '[dev]' is used to install additional dependencies for the development environment (including pytest and jupyter).
 
 Alternatively, you can use the makefile we provide to install requirements and psipy in your environment:
+
 ```Shell
 make sync-dev            # runs uv pip sync from above
-make editable_install    # runs uv pip instlal -e from above
+make editable_install    # runs uv pip install -e from above
 ```
 
 ## Getting started
 
-To get started, we propose to have a look at 
+To get started, we propose to have a look at
 
-   - examples/rl/simulated_cartpole/nfqs_psiori_cartpole_minimal.py
+- examples/rl/simulated_cartpole/nfqs_psiori_cartpole_minimal.py
 
 which will learn to swing up and balance a simulated cart-pole system.
 
 The script is an example of about the minimal code that is needed to successfully learn a policy on the simulated cartpole system to swing up, stabilize and balance the pole from scratch within 80 to 140 episodes. It uses our NFQ variant that has the actions encoded in the input layer (named "NFQs"). It can be run after activating the above environment as follows:
+
 ```Shell
 cd examples/rl/simulated_cartpole/
 python nfqs_psiori_cartpole_minimal.py
 ```
 
 A slightly longer version that can be run using
+
 ```Shell
 cd examples/rl/simulated_cartpole/
 python nfqs_psiori_cartpole.py
 ```
+
 also demonstrate saving and loading models, running evaluations separate from the training runs and creating different plots automatically while running the experiment.
 
 ## Tutorials

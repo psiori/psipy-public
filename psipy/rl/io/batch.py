@@ -405,7 +405,9 @@ class Batch(KSequence):
         prioritization: Optional[str] = None,
         alpha: float = 0.5,
         beta: float = 0.5,
+        **kwargs,
     ):
+        super().__init__(**kwargs)
         if len(episodes) == 0:
             raise ValueError("No episodes passed to Batch!")
         
