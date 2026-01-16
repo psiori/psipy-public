@@ -1,8 +1,9 @@
 import json
-import zmq
-import numpy as np
 from typing import Optional
-from psipy.rl.core.plant import Plant, State, Action
+
+import numpy as np
+import zmq
+from psipy.rl.core.plant import Action, Plant, State
 
 """
     ZMQ Proxy Plant for Autocrane
@@ -168,14 +169,14 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         self._randomize_set_points = randomize_set_points
         self._alternating_set_points = alternating_set_points and not randomize_set_points
         self.next_option = 0
-        self.trolley_min = None
-        self.trolley_max = None
-        self.hoist_min = None
-        self.hoist_max = None
+        self.trolley_min: float | None = None
+        self.trolley_max: float | None = None
+        self.hoist_min: float | None = None
+        self.hoist_max: float | None = None
 
-        self._gantry_set_point = None
-        self._trolley_set_point = None
-        self._hoist_set_point = None
+        self._gantry_set_point: float | None = None
+        self._trolley_set_point: float | None = None
+        self._hoist_set_point: float | None = None
 
     @property
     def set_point_trolley(self):
@@ -212,7 +213,7 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         Sets the set point for the trolley position to the alternating set point.
         """
 
-        if self.hoist_min is None or self.hoist_max is None:
+        if self.hoist_min is None or self.hoist_max is None or self.trolley_min is None or self.trolley_max is None:
             return
 
         options = (
@@ -270,11 +271,18 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         self.gantry_min = float(message["gantry_pos_min"])
         self.gantry_max = float(message["gantry_pos_max"]) 
         
-        self.trolley_min = float(message["trolley_pos_min"]) + 0.20  # 20 cm buffer
-        self.trolley_max = float(message["trolley_pos_max"]) - 0.20  # 20 cm buffer
-
-        self.hoist_min = float(message["hoist_pos_min"]) + 0.25  # 25 cm buffer
-        self.hoist_max = float(message["hoist_pos_max"]) - 0.25  # 25 cm buffer
+        # 0.20 m buffer wasn't enough, with a lot of sway the grapple can hit the middle column
+        trolley_buffer = 0.50
+        self.trolley_min = float(message["trolley_pos_min"]) + trolley_buffer
+        self.trolley_max = float(message["trolley_pos_max"]) - trolley_buffer
+        if self.trolley_min > self.trolley_max:
+            raise ValueError("Trolley min is greater than trolley max")
+       
+        hoist_buffer = 0.25
+        self.hoist_min = float(message["hoist_pos_min"]) + hoist_buffer
+        self.hoist_max = float(message["hoist_pos_max"]) - hoist_buffer
+        if self.hoist_min > self.hoist_max:
+            raise ValueError("Hoist min is greater than hoist max")
 
         state["cycle_number"] = message["cycle_number"]
         state["cycle_started_at"] = message["cycle_started_at"]
@@ -509,28 +517,34 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
             hoist_pos = float(message["hoist_pos"])
 
             state_dict = self._state_dict_from_autocrane_message(message)
-            state = self._process_and_update_from(state_dict, {
+            self._process_and_update_from(state_dict, {
                     "trolley_target_vel": target_trolley_vel,
                     "hoist_target_vel": target_hoist_vel })
             cycle_number = state_dict["cycle_number"]
 
             print (f"IN MOVE AWAY FROM LIMITS: Cycle { cycle_number } Trolley position: {message['trolley_pos']}, limits: {self.trolley_min} - {self.trolley_max}, {self.hoist_min}-{self.hoist_max}")
+            
+            if self.trolley_min is None or self.trolley_max is None:
+                trolley_ok = True
+            else:
+                trolley_ok = trolley_pos > self.trolley_min + 0.10 and trolley_pos < self.trolley_max - 0.1
 
-            trolley_ok = trolley_pos > self.trolley_min + 0.10 and trolley_pos < self.trolley_max - 0.1
-
-            hoist_ok = not self.hoist_active or (self.hoist_active and hoist_pos > self.hoist_min + 0.20 and hoist_pos < self.hoist_max - 0.20)
+            if self.hoist_min is None or self.hoist_max is None:
+                hoist_ok = True
+            else:
+                hoist_ok = not self.hoist_active or (self.hoist_active and hoist_pos > self.hoist_min + 0.20 and hoist_pos < self.hoist_max - 0.20)
 
             if trolley_ok and hoist_ok:
                 print("Trolley and hoist are ok, moving away from limits")
                 break
 
-            if not trolley_ok:
+            if not trolley_ok and self.trolley_min is not None and self.trolley_max is not None:
                 center = (self.trolley_min + self.trolley_max) / 2.0
                 target_trolley_vel = 0.268 if trolley_pos <= center else -0.268
             else:
                 target_trolley_vel = 0.0
 
-            if not hoist_ok:
+            if not hoist_ok and self.hoist_min is not None and self.hoist_max is not None:
                 center = (self.hoist_min + self.hoist_max) / 2.0
                 target_hoist_vel = 0.095 if hoist_pos <= center else -0.095
             else:
