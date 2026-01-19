@@ -24,18 +24,16 @@ import sys
 import time
 from collections import OrderedDict
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from pprint import pprint
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
 from psipy.rl.core.controller import Controller
 from psipy.rl.core.cycle_manager import CM
 from psipy.rl.core.exceptions import NotNotifiedOfEpisodeStart
-from psipy.rl.io.sart import SARTLogger
 from psipy.rl.core.plant import Plant, State, TAction, TState
-
-from pprint import pprint
+from psipy.rl.io.sart import SARTLogger
 
 __all__ = ["Loop", "LoopPrettyPrinter"]
 
@@ -56,7 +54,11 @@ class LoopPrettyPrinter:
         self.total_transitions: int = 0
 
     def print_transition(
-        self, state: TState, action: TAction, next_state: TState, cost: float,
+        self,
+        state: TState,
+        action: TAction,
+        next_state: TState,
+        cost: float,
     ) -> None:
         state = state.as_array(self._state_channels)
         next_state = next_state.as_array(self._state_channels)
@@ -105,7 +107,11 @@ class Loop:
         self.logdir = logdir
         self.initial_time = initial_time
         self.sart = SARTLogger(
-            self.logdir, self.name, self.initial_time, sart_rollover, single_sart,
+            self.logdir,
+            self.name,
+            self.initial_time,
+            sart_rollover,
+            single_sart,
         )
         self.single_sart = single_sart
 
@@ -131,7 +137,7 @@ class Loop:
         self,
         episodes: int = 1,
         max_episode_steps: int = -1,
-        max_writer_steps: Optional[int] = None
+        max_writer_steps: Optional[int] = None,
     ) -> Dict[int, Dict[str, Any]]:
         """Runs the loop for "episodes" many episodes
 
@@ -151,6 +157,9 @@ class Loop:
             if break_all:
                 break
         return self.metrics
+
+    def update_actor(self, actor: Controller) -> None:
+        self.control = actor
 
     def run_episode(
         self,
@@ -226,11 +235,17 @@ class Loop:
                     # BUG? the last observation has not been added to the SART, yet! Thus, the last transition will never be used for learning??
                     break
 
-                if (max_writer_steps is not None and 
-                    cycles > 0 and cycles % max_writer_steps == 0
+                if (
+                    max_writer_steps is not None
+                    and cycles > 0
+                    and cycles % max_writer_steps == 0
                 ):
-                    LOG.info(f"Max writer steps reached. Rolling over SART file within episode after {cycles} cycles...")
-                    print(f"Max writer steps reached. Rolling over SART file within episode after {cycles} cycles...")
+                    LOG.info(
+                        f"Max writer steps reached. Rolling over SART file within episode after {cycles} cycles..."
+                    )
+                    print(
+                        f"Max writer steps reached. Rolling over SART file within episode after {cycles} cycles..."
+                    )
                     self.sart.do_rollover()
 
                 CM["loop"].tock()
@@ -242,10 +257,10 @@ class Loop:
             CM.handle_exception(e)
             raise e  # Loop may crash, crashes should be handled one level up.
         finally:  # Cleanup local resources.
-            #print("\n>>>> START OF TRAJECTORY:")
-            #pprint(self.trajectory)
-            #print("<<<< END OF TRAJECTORY")
-            #print("Trajectory length: ", len(self.trajectory))
+            # print("\n>>>> START OF TRAJECTORY:")
+            # pprint(self.trajectory)
+            # print("<<<< END OF TRAJECTORY")
+            # print("Trajectory length: ", len(self.trajectory))
 
             if pretty_printer is not None:
                 pretty_printer.print_total_cost()
