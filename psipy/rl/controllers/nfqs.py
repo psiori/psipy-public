@@ -24,8 +24,8 @@ applying the algorithm to historic and/or off-policy data.
 
 """
 
-import logging
 import itertools
+import logging
 import random
 import sys
 import time
@@ -34,17 +34,17 @@ from typing import Callable, Dict, List, Optional, Tuple, Type, Union, cast
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
-from tensorflow.keras.utils import Sequence
 from tensorflow.keras import layers as tfkl
+from tensorflow.keras.utils import Sequence
 
 from psipy.core.io import MemoryZipFile
 from psipy.core.np_utils import cache
 from psipy.nn.layers import ExpandDims, Squeeze
-from psipy.rl.core.controller import Controller
 from psipy.rl.controllers.nfq import ObservationStack, enrich_errors
+from psipy.rl.core.controller import Controller
 from psipy.rl.core.cycle_manager import CM
-from psipy.rl.io.batch import Batch
 from psipy.rl.core.plant import Action, State
+from psipy.rl.io.batch import Batch
 from psipy.rl.preprocessing import StackNormalizer
 
 __all__ = ["NFQs"]
@@ -52,19 +52,21 @@ __all__ = ["NFQs"]
 LOG = logging.getLogger(__name__)
 
 
-def generate_multi_dimensional_action_combinations(legal_values: Tuple[Tuple, ...]) -> np.ndarray:
+def generate_multi_dimensional_action_combinations(
+    legal_values: Tuple[Tuple, ...],
+) -> np.ndarray:
     """Generate all possible combinations of multi-dimensional discrete actions and also the combinations of indices of these combined actions.
-    
+
     Args:
-        legal_values: Tuple of tuples, where each inner tuple contains the 
+        legal_values: Tuple of tuples, where each inner tuple contains the
                       legal values for one action dimension.
-    
+
     Returns:
-        Tuple of shape (array(N_ACTIONS, N_DIMENSIONS), array(N_ACTIONS, 
-        N_DIMENSIONS)) containing all possible action combinations in the first 
-        element and the corresponding indices of these combinations in the 
+        Tuple of shape (array(N_ACTIONS, N_DIMENSIONS), array(N_ACTIONS,
+        N_DIMENSIONS)) containing all possible action combinations in the first
+        element and the corresponding indices of these combinations in the
         second element.
-    
+
     Example:
         >>> legal_values = ((-1, 0, 1), (-1, 0, 1))  # 2D actions with 3 values each
         >>> generate_multi_dimensional_action_combinations(legal_values)
@@ -87,8 +89,13 @@ def generate_multi_dimensional_action_combinations(legal_values: Tuple[Tuple, ..
                [2, 2]]))
     """
     combinations = list(itertools.product(*legal_values))
-    index_combinations = list(itertools.product(*[range(len(dim)) for dim in legal_values]))
-    return (np.array(combinations, dtype=float), np.array(index_combinations, dtype=int))
+    index_combinations = list(
+        itertools.product(*[range(len(dim)) for dim in legal_values])
+    )
+    return (
+        np.array(combinations, dtype=float),
+        np.array(index_combinations, dtype=int),
+    )
 
 
 def make_state_action_pairs(
@@ -126,7 +133,7 @@ def make_state_action_pairs(
 
     if isinstance(states, np.ndarray):
         # Input states are a single numpy array.
-        actions = np.tile(action_values, (len(states), 1)) 
+        actions = np.tile(action_values, (len(states), 1))
         states = np.repeat(states, n_act, axis=0)
         states = (states, actions)
     else:  # if isinstance(states, dict)
@@ -198,7 +205,7 @@ class PickyBatch(Sequence):
             costs = costs[:, None]
         assert len(costs.shape) == 2, "Be aware of broadcasting!"
 
-        #states, actions = self.batch.states_actions[0]
+        # states, actions = self.batch.states_actions[0]
 
         # .all() uses cache!
         next_states = self.batch.nextstates.all()  # (BATCH, state, dim, lookback)
@@ -206,7 +213,7 @@ class PickyBatch(Sequence):
             next_states, self.action_values_normalized
         )
 
-        #print (next_states)
+        # print (next_states)
 
         # Note: The following does perform single-step inference! This might
         #       result in OOM errors when there is too much data.
@@ -225,13 +232,13 @@ class PickyBatch(Sequence):
             # maximum immediate cost.
             q_target[terminals.ravel() == 1] = 1
 
-        #print(f"\n\n\n>>>>>>>>>>\n\nqtargets n: { len(q_target) } max: {q_target.max()} min: {q_target.min()}")
+        # print(f"\n\n\n>>>>>>>>>>\n\nqtargets n: { len(q_target) } max: {q_target.max()} min: {q_target.min()}")
 
-        #for s, a, t, c, qt in zip(states, actions, terminals, costs, q_target):
+        # for s, a, t, c, qt in zip(states, actions, terminals, costs, q_target):
         #    if t:
         #        print (">> TERMINAL transition ({}, {}, {}) with qtarget: {}".format(s, a, c, qt))
         #
-        #print ("\n>>>>>>>>>>>> {} TERMINALS\n\n".format(np.sum(terminals)))
+        # print ("\n>>>>>>>>>>>> {} TERMINALS\n\n".format(np.sum(terminals)))
 
         # Clamp down q values given their minimum value and clip values to
         # within sigmoid bounds to prevent saturation.
@@ -283,7 +290,6 @@ class PickyBatch(Sequence):
         return len(self.batch)
 
     def __getitem__(self, idx):
-        
         sa, t, w = self.batch.statesactions_targets[idx]
 
         # The targets are either shaped (N_SAMPLES, 1) or (N_SAMPLES, N_ACT).
@@ -298,9 +304,8 @@ class PickyBatch(Sequence):
             t = t[np.arange(len(t)), action_idx]
         if self.prioritized:
             return sa, t, w
-        
-        return sa, t
 
+        return sa, t
 
 
 class NFQs(Controller):
@@ -370,19 +375,31 @@ class NFQs(Controller):
             action_values = np.asarray(action_values, dtype=float)
 
             if len(action_values.shape) == 1:
-                action_values = action_values[..., None] # we make every potential action a vector, even if it may be 1-dimensional. This is to unify and ease further processing between 1-dimensional and multi-dimensional actions, and to, nevertheless, accept whatever the user gives as argument.
+                action_values = action_values[
+                    ..., None
+                ]  # we make every potential action a vector, even if it may be 1-dimensional. This is to unify and ease further processing between 1-dimensional and multi-dimensional actions, and to, nevertheless, accept whatever the user gives as argument.
                 if self._action_indices is None:
-                    self._action_indices = np.arange(len(action_values))[..., None] # legacy method to allow providing 1-d action values via the constructor. Indices for n-d actions provided via the constructor are not generated automatically, as the order is unclear.
+                    self._action_indices = np.arange(
+                        len(action_values)
+                    )[
+                        ..., None
+                    ]  # legacy method to allow providing 1-d action values via the constructor. Indices for n-d actions provided via the constructor are not generated automatically, as the order is unclear.
 
             elif action_indices is None:
-                LOG.warning("Action values provided via the constructor, but action indices are not. Ignoring action indices, data will not be usable by DQN - like methods.")
-            
+                LOG.warning(
+                    "Action values provided via the constructor, but action indices are not. Ignoring action indices, data will not be usable by DQN - like methods."
+                )
+
         else:
             if len(self.action_channels) == 1:
                 action_values = self.action_type.legal_values
                 self._action_indices = np.arange(len(action_values))
             else:
-                action_values, action_indices = generate_multi_dimensional_action_combinations(self.action_type.legal_values)
+                action_values, action_indices = (
+                    generate_multi_dimensional_action_combinations(
+                        self.action_type.legal_values
+                    )
+                )
                 self._action_indices = action_indices
 
         self._action_values = np.asarray(action_values, dtype=float)
@@ -430,7 +447,6 @@ class NFQs(Controller):
         observation = state.as_array(*self.state_channels)
         stack = self._memory.append(observation).stack
 
-
         action, meta = self.get_actions(stack[None, ...])
         assert action.shape[0] == 1
         action = action.ravel()
@@ -459,10 +475,12 @@ class NFQs(Controller):
             if self.action_repeat == 0:
                 action_indices = np.random.randint(
                     low=0, high=len(self.action_values), size=(stacks.shape[0], 1)
-                ).ravel()   # TODO (AH/SL): not 100% sure why this is needed after switch to multi-dimensional actions.
+                ).ravel()  # TODO (AH/SL): not 100% sure why this is needed after switch to multi-dimensional actions.
                 actions = self.action_values[action_indices]  # shape (N, ACT_DIM)
                 if self._action_indices is not None:
-                    meta = dict(index=self._action_indices[action_indices], nodoe=actions)
+                    meta = dict(
+                        index=self._action_indices[action_indices], nodoe=actions
+                    )
                 else:
                     meta = dict(nodoe=actions)
                 # Randomly alter how long actions are held
@@ -481,7 +499,7 @@ class NFQs(Controller):
                 q_values = self._model(stacks).numpy()
             action_indices = argmin_q(q_values, len(self.action_values))
             action_indices = action_indices.astype(np.int32).ravel()
-            actions = self.action_values[action_indices]  # shape (N, ACT_DIM)  
+            actions = self.action_values[action_indices]  # shape (N, ACT_DIM)
             if self._action_indices is not None:
                 meta = dict(index=self._action_indices[action_indices], nodoe=actions)
             else:
@@ -490,7 +508,6 @@ class NFQs(Controller):
         if self.idoe:
             actions = self.doe_transform(actions)
         return actions, meta
-    
 
     @property
     def action_normalizer(self):
@@ -500,20 +517,19 @@ class NFQs(Controller):
     def action_normalizer(self, action_normalizer: StackNormalizer):
         self._action_normalizer = action_normalizer
         action_values = self.action_values
-        self.action_values_normalized = self.action_normalizer.transform(
-            action_values
-        )
+        self.action_values_normalized = self.action_normalizer.transform(action_values)
 
     @property
     def action_values(self):
         return self._action_values
-    
+
     @action_values.setter
     def action_values(self, action_values: np.ndarray):
         self._action_values = np.asarray(action_values, dtype=float)
-        self._config['action_values'] = action_values  # not converted, like in constructor
+        self._config["action_values"] = (
+            action_values  # not converted, like in constructor
+        )
         print("CONFIG AFTER NEW ACTION VALUES", self._config)
-
 
     def preprocess_observations(self, stacks: np.ndarray) -> np.ndarray:
         """Preprocesses observation stacks before those are passed to the network.
@@ -585,12 +601,14 @@ class NFQs(Controller):
 
         def max_q(y_true, y_preds):
             return tf.reduce_max(y_preds)
-        
+
         def avg_qdelta(y_true, y_preds):
-            return tf.reduce_mean(tf.abs(y_preds-y_true))  # mean absolute error, easier to interpret than loss/MSE
-    
+            return tf.reduce_mean(
+                tf.abs(y_preds - y_true)
+            )  # mean absolute error, easier to interpret than loss/MSE
+
         def median_qdelta(y_true, y_preds):
-            return tfp.stats.percentile(tf.abs(y_preds-y_true), 50)
+            return tfp.stats.percentile(tf.abs(y_preds - y_true), 50)
 
         train_model = tf.keras.Model(self._model.inputs, self._model.outputs)
         train_model.compile(
@@ -605,7 +623,6 @@ class NFQs(Controller):
 
         self._train_model = train_model
 
-   
     def fit(
         self,
         batch: Batch,
@@ -671,7 +688,7 @@ class NFQs(Controller):
         feature_dim: int = 100,
     ) -> tf.keras.Model:
         """Create a default model.
-        
+
         Args:
             state_dim: Dimension of the state.
             action_dim: Dimension of the action.
@@ -692,16 +709,11 @@ class NFQs(Controller):
     def from_config(cls, config):
         raise NotImplementedError("Cannot initialize from config.")
 
-    def reload(self,
-               file_path: str,
-               load_all_settings: bool = False
-    ) -> None:
+    def reload(self, file_path: str, load_all_settings: bool = False) -> None:
         # Load the saved file
         zipfile = MemoryZipFile(file_path)
 
-        top_level = [
-            d for d in zipfile.ls(include_directories=True) if d.endswith("/")
-        ]
+        top_level = [d for d in zipfile.ls(include_directories=True) if d.endswith("/")]
         if len(top_level) == 0:
             raise ValueError(
                 "No top-level directory found, files contained in zip: "
@@ -717,10 +729,7 @@ class NFQs(Controller):
 
         self._reload(zipfile, load_all_settings)
 
-    def _reload(self,
-                zipfile: MemoryZipFile,
-                load_all_settings: bool = False
-    ) -> None:
+    def _reload(self, zipfile: MemoryZipFile, load_all_settings: bool = False) -> None:
         self._model = zipfile.get_keras("model.keras", support_legacy=True)
         self.normalizer = StackNormalizer.load(zipfile)
 
@@ -758,9 +767,14 @@ class NFQs(Controller):
         obj.normalizer = StackNormalizer.load(zipfile)
         try:
             obj.action_normalizer = StackNormalizer.load(zipfile, "action_normalizer")
-            LOG.info("NFQs._load loaded action_normalizer with configuration:", obj.action_normalizer.get_config())
+            LOG.info(
+                "NFQs._load loaded action_normalizer with configuration:",
+                obj.action_normalizer.get_config(),
+            )
         except Exception as e:
-            LOG.warning("POSSIBLY BROKEN MODEL: Failed to load action normalizer. This file is likely from an old NFQs model format. Will use default normalization instead. If you changed the action values after training, especially adding larger actions, this will likely lead to errors and an undefined behavior of the controller.")
+            LOG.warning(
+                "POSSIBLY BROKEN MODEL: Failed to load action normalizer. This file is likely from an old NFQs model format. Will use default normalization instead. If you changed the action values after training, especially adding larger actions, this will likely lead to errors and an undefined behavior of the controller."
+            )
             LOG.warning(e)
 
         return obj
