@@ -406,9 +406,7 @@ class NFQs(Controller):
 
         LOG.info("USED ACTION VALUES %s", self._action_values)
         LOG.info("USED ACTION INDICES %s", self._action_indices)
-        print("USED ACTION VALUES", self._action_values)
-        print("USED ACTION INDICES", self._action_indices)
-        print("USED ACTION VALUES SHAPE", self._action_values.shape)
+        LOG.info("USED ACTION VALUES SHAPE %s", self._action_values.shape)
 
         self.epsilon = 0.0
         self._memory = ObservationStack((len(self.state_channels),), lookback=lookback)
@@ -438,7 +436,6 @@ class NFQs(Controller):
             self._model(inputs)
         except Exception:
             LOG.warning("Model warmup failed, might still work as expected tho.")
-            print("Model warmup failed, might still work as expected tho.")
             pass
 
     def notify_episode_starts(self) -> None:
@@ -532,7 +529,7 @@ class NFQs(Controller):
         self._config["action_values"] = (
             action_values  # not converted, like in constructor
         )
-        print("CONFIG AFTER NEW ACTION VALUES", self._config)
+        LOG.info("CONFIG AFTER NEW ACTION VALUES %s", self._config)
 
     def preprocess_observations(self, stacks: np.ndarray) -> np.ndarray:
         """Preprocesses observation stacks before those are passed to the network.
@@ -762,8 +759,8 @@ class NFQs(Controller):
         config = zipfile.get("config.json")
         model = zipfile.get_keras("model.keras", custom_objects)
         action_meta = zipfile.get_json("Action.json")
-        print("NFQs._load action meta:", action_meta)
-        print("NFQs._load config:", config)
+        LOG.info("NFQs._load action meta: %s", action_meta)
+        LOG.info("NFQs._load config: %s", config)
         assert isinstance(action_meta, dict)
         action_type = cls.load_action_type(action_meta, custom_objects)
         obj = cls(model=model, action=action_type, **config)
