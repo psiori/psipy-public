@@ -765,6 +765,10 @@ class NFQs(Controller):
         action_type = cls.load_action_type(action_meta, custom_objects)
         obj = cls(model=model, action=action_type, **config)
         obj.normalizer = StackNormalizer.load(zipfile)
+        LOG.info(
+            "NFQs._load loaded normalizer with configuration: %s",
+            obj.normalizer.get_config(),
+        )
         try:
             obj.action_normalizer = StackNormalizer.load(zipfile, "action_normalizer")
             LOG.info(
