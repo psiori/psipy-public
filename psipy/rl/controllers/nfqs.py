@@ -404,8 +404,8 @@ class NFQs(Controller):
 
         self._action_values = np.asarray(action_values, dtype=float)
 
-        LOG.info("USED ACTION VALUES", self._action_values)
-        LOG.info("USED ACTION INDICES", self._action_indices)
+        LOG.info("USED ACTION VALUES %s", self._action_values)
+        LOG.info("USED ACTION INDICES %s", self._action_indices)
         print("USED ACTION VALUES", self._action_values)
         print("USED ACTION INDICES", self._action_indices)
         print("USED ACTION VALUES SHAPE", self._action_values.shape)
