@@ -1,10 +1,11 @@
 import math
 import random
 from typing import Callable, Optional, Tuple, Type
-from matplotlib import pyplot as plt
+
 import numpy as np
+from matplotlib import pyplot as plt
+
 from psipy.rl.core.plant import Action, Plant, State
-from psipy.rl.controllers.nfq import tanh2
 from psipy.rl.io.batch import Episode
 
 # This plant contains modified code from the gymnasium cartpole example.
@@ -36,18 +37,22 @@ from psipy.rl.io.batch import Episode
 
 
 # The derived work (this file) is also licensed under the BSD license as is
-# psipy-public as a whole. See LICENSE file in main directory.   
+# psipy-public as a whole. See LICENSE file in main directory.
 
 FLOATMAX = np.finfo(np.float32).max
 PRECISION = 6
 USE_FRICTION = True
 
+
 def polespeed(second, first):
-    return np.tan(second-first)
+    return np.tan(second - first)
+
 
 class CartPoleAction(Action):
     """Parent class of cartpole actions."""
+
     pass
+
 
 class CartPoleBangAction(CartPoleAction):
     """Action with left actions right actions"""
@@ -55,6 +60,7 @@ class CartPoleBangAction(CartPoleAction):
     dtype = "discrete"
     channels = ("move",)
     legal_values = ((-10, 0, 10),)
+
 
 class CartPoleExtendedBangAction(CartPoleAction):
     """Action with left actions right actions"""
@@ -66,6 +72,7 @@ class CartPoleExtendedBangAction(CartPoleAction):
 
 class CartPoleContinuousAction(CartPoleAction):
     """Action with continuous values"""
+
     dtype = "continuous"
     channels = ("move",)
     legal_values = ((-10, 10),)
@@ -85,10 +92,10 @@ class CartPoleState(State):
     )
 
 
-def make_default_cost_function(x_threshold: float = 3.6,
-                               valid_angle: float = None) -> Callable[[np.ndarray], np.ndarray]:
+def make_default_cost_function(
+    x_threshold: float = 3.6, valid_angle: float = None
+) -> Callable[[np.ndarray], np.ndarray]:
     def cost_function(state: CartPoleState) -> np.ndarray:
-
         DEFAULT_STEP_COST = 0.01
         TERMINAL_COST = 1.0
 
@@ -100,14 +107,14 @@ def make_default_cost_function(x_threshold: float = 3.6,
         # from DEFAULT_STEP_COST (in center, but pole pointing downwards),
         # to 0.0 (in center, but pole pointing upwards) using the cosine
         # of the pole angle.
-        costs = (1.0-(cosine+1.0)/2.0) * DEFAULT_STEP_COST
+        costs = (1.0 - (cosine + 1.0) / 2.0) * DEFAULT_STEP_COST
 
         # DEFAULT COSTS for positions outside the center region of the track.
         if abs(position) >= 0.2 * x_threshold:
             costs = DEFAULT_STEP_COST
 
         if abs(position) >= 0.8 * x_threshold:
-            costs = DEFAULT_STEP_COST * 10 # soft avoidance area before termination
+            costs = DEFAULT_STEP_COST * 10  # soft avoidance area before termination
 
         if valid_angle is not None:
             if np.arccos(cosine) > valid_angle:
@@ -167,18 +174,17 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
     steps_beyond_done: Optional[int]
     state: Tuple[float, float, float, float, float, float]
 
-
     def __init__(
         self,
         x_threshold: float = 2.4,
         cost_function: Optional[Callable[[np.ndarray], np.ndarray]] = None,
         state_type: Type[CartPoleState] = CartPoleState,
         action_type: Type[CartPoleAction] = CartPoleBangAction,
-        render_mode: str = "human",
-        tau: float = 0.02, # seconds between state update, 0.02 / 50 Hz is standard and has been used in the NFQ20 paper
+        render_mode: str | None = "human",
+        tau: float = 0.02,  # seconds between state update, 0.02 / 50 Hz is standard and has been used in the NFQ20 paper
         do_not_reset: bool = False,
-        start_angle: float = None,
-        valid_angle: float = None,
+        start_angle: float | None = None,
+        valid_angle: float | None = None,
     ):
         """
         Args:
@@ -186,12 +192,9 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
             valid_angle: If given, system will be stopped with a termina state if the anlge leaves the valid range abs(angle) > valid_angle.
         """
         if cost_function is None:
-            cost_function = make_default_cost_function(
-                x_threshold,
-                valid_angle
-            ) 
+            cost_function = make_default_cost_function(x_threshold, valid_angle)
             print("CartPole is using default cost function")
-      
+
         super().__init__(cost_function=cost_function)
 
         self.renderable = True
@@ -230,14 +233,14 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         self.max_cart_speed = 1.0
         low = np.array([-4.8, -self.max_cart_speed, -np.inf, -np.inf, -1, 1])
         high = np.array([4.8, self.max_cart_speed, np.inf, np.inf, -1, 1])
-    #   self.observation_space = spaces.Box(low, high, dtype=np.float32)
-    #    if self.continuous:
-    #        self.action_space = spaces.Box(
-    #            np.array([-np.inf]), np.array([np.inf]), dtype=np.float32
-    #        )
-    #    else:
-    #        # 999 is a placeholder to avoid having to pass in a value
-    #        self.action_space = spaces.Discrete(999)
+        #   self.observation_space = spaces.Box(low, high, dtype=np.float32)
+        #    if self.continuous:
+        #        self.action_space = spaces.Box(
+        #            np.array([-np.inf]), np.array([np.inf]), dtype=np.float32
+        #        )
+        #    else:
+        #        # 999 is a placeholder to avoid having to pass in a value
+        #        self.action_space = spaces.Discrete(999)
         self.screen = None
         self.clock = None
         self.screen_width = 600
@@ -245,7 +248,9 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
 
         self.reset()
 
-    def _get_next_state(self, state: CartPoleState, action: CartPoleAction) -> CartPoleState:
+    def _get_next_state(
+        self, state: CartPoleState, action: CartPoleAction
+    ) -> CartPoleState:
         """Apply action and step the environment tau seconds into the future.
 
         The majority of this code is replicated from the OpenAI gym cartpole code.
@@ -259,9 +264,11 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
             * Forces the use of semi-euler physics calculation, which seems more realistic.
 
         """
-        #TODO: assert state == current_state 
+        # TODO: assert state == current_state
         info = {}
-        x, x_dot, theta, sintheta, costheta, theta_dot, move_ACT = self._current_state.as_array()
+        x, x_dot, theta, sintheta, costheta, theta_dot, move_ACT = (
+            self._current_state.as_array()
+        )
 
         force = action["move"]
         self.current_force = force
@@ -293,7 +300,7 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         theta = theta + self.tau * theta_dot
 
         # handle overflow of theta below -pi and above pi
-        theta = ((theta + 3* math.pi) % (2* math.pi)) - math.pi 
+        theta = ((theta + 3 * math.pi) % (2 * math.pi)) - math.pi
         # NOTE: this has the risk of breaking and velocity estimation based on
         # the angle difference. It's only fine here, as the velocity
         # calculation (theta_dot) here is done using the cosine and sine of
@@ -314,13 +321,15 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         info["theta_accel"] = thetaacc
         info["x_accel"] = xacc
 
-        return CartPoleState([x, x_dot, theta, sin, cos, theta_dot, force], 0.0, terminal)
-    
+        return CartPoleState(
+            [x, x_dot, theta, sin, cos, theta_dot, force], 0.0, terminal
+        )
+
     def notify_episode_stops(self) -> bool:
         if not self.do_not_reset or self._current_state.terminal:
             self.reset()
         return True
-    
+
     def reset(self):
         self.x_goal = 0.0
         self.x_start = random.random() - 0.5  # 0.0  # random.random() * 3.4 - 1.7
@@ -332,13 +341,13 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         cos = math.cos(theta)
 
         state = [self.x_start, x_dot, theta, sin, cos, theta_dot, 0.0]
-        self._current_state = CartPoleState(state, 0.0, False)# zero action
+        self._current_state = CartPoleState(state, 0.0, False)  # zero action
         self._current_state.cost = self._cost_function(self._current_state)
 
         return self._current_state
-    
+
     def render(self):
-        #if self.render_mode is None:
+        # if self.render_mode is None:
         #    print(
         #        "You are calling render method without specifying any render mode. "
         #        "You can specify the render_mode at initialization, "
@@ -350,13 +359,11 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
             import pygame
             from pygame import gfxdraw
         except ImportError as e:
-            raise DependencyNotInstalled(
-                'pygame is not installed'
-            ) from e
+            raise DependencyNotInstalled("pygame is not installed") from e
 
         if self.screen is None:
             pygame.init()
-            if True: # self.render_mode == "human":
+            if True:  # self.render_mode == "human":
                 pygame.display.init()
                 self.screen = pygame.display.set_mode(
                     (self.screen_width, self.screen_height)
@@ -423,14 +430,16 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
         gfxdraw.hline(self.surf, 0, self.screen_width, carty, (0, 0, 0))
 
         # Draw action strength bar below the cart
-        action = self.current_force 
+        action = self.current_force
         max_force = 10.0  # Maximum force from action space # TODO: make this dynamic by reading from action_type, legal values
-        
+
         # Calculate bar properties
-        bar_width = abs(action) / max_force * cartwidth / 2.0 # Proportional to action magnitude
+        bar_width = (
+            abs(action) / max_force * cartwidth / 2.0
+        )  # Proportional to action magnitude
         bar_height = 8.0
         bar_y = carty - cartheight - 10  # Position below cart
-        
+
         if action != 0:
             # Determine bar direction and position
             if action > 0:  # Right action
@@ -439,54 +448,63 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
             else:  # Left action
                 bar_x = cartx - bar_width
                 bar_end_x = cartx
-            
+
             # Draw the action bar
             bar_color = (128, 128, 255)
-            gfxdraw.box(self.surf, (int(bar_x), int(bar_y), int(bar_width), int(bar_height)), bar_color)
-            gfxdraw.rectangle(self.surf, (int(bar_x), int(bar_y), int(bar_width), int(bar_height)), (0, 0, 0))
+            gfxdraw.box(
+                self.surf,
+                (int(bar_x), int(bar_y), int(bar_width), int(bar_height)),
+                bar_color,
+            )
+            gfxdraw.rectangle(
+                self.surf,
+                (int(bar_x), int(bar_y), int(bar_width), int(bar_height)),
+                (0, 0, 0),
+            )
 
         self.surf = pygame.transform.flip(self.surf, False, True)
-        
+
         # Draw state information in top left corner (after flip)
         try:
             import pygame.font
+
             pygame.font.init()
             font = pygame.font.Font(None, 24)  # Default font, size 24
-            
+
             # Get state values
             cart_pos = x[0]  # cart_position
             cart_vel = x[1]  # cart_velocity
             pole_angle = x[2]  # pole_angle (in radians)
             pole_vel = x[5]  # pole_velocity
-            
+
             # Convert pole angle to degrees for display
             pole_angle_deg = math.degrees(pole_angle)
-            
+
             # Create text strings
             cart_text = f"Cart: pos={cart_pos:.2f}, vel={cart_vel:.2f}"
             pole_text = f"Pole: angle={pole_angle_deg:.1f}°, vel={pole_vel:.2f}"
-            
+
             # Render text surfaces
             cart_surface = font.render(cart_text, True, (0, 0, 0))  # Black text
             pole_surface = font.render(pole_text, True, (0, 0, 0))  # Black text
-            
+
             # Draw text on surface (top left corner)
             self.surf.blit(cart_surface, (10, 10))
             self.surf.blit(pole_surface, (10, 35))
-            
+
         except ImportError:
             # If pygame.font is not available, skip text rendering
             pass
         self.screen.blit(self.surf, (0, 0))
         if self.render_mode == "human":
             pygame.event.pump()
-            self.clock.tick(50) # self.metadata["render_fps"])
+            self.clock.tick(50)  # self.metadata["render_fps"])
             pygame.display.flip()
 
         elif self.render_mode == "rgb_array":
             return np.transpose(
-                np.array(pygame.surfarray.pixels3d(self.screen)), axes=(1, 0, 2))
-
+                np.array(pygame.surfarray.pixels3d(self.screen)), axes=(1, 0, 2)
+            )
 
 
 def plot_swingup_state_history(
@@ -495,7 +513,7 @@ def plot_swingup_state_history(
     episode_num: Optional[int] = None,
     figure: Optional[plt.Figure] = None,
     do_display=True,
-    title_string=None
+    title_string=None,
 ) -> None:
     """Creates a plot that details the controller behavior.
 
@@ -515,7 +533,7 @@ def plot_swingup_state_history(
 
     """
     cost = None
-    #plant = cast(CartPole, plant)
+    # plant = cast(CartPole, plant)
 
     x = episode.observations[:, 0]
     x_s = episode.observations[:, 1]
@@ -525,9 +543,8 @@ def plot_swingup_state_history(
     td = episode.observations[:, 5]
     a = episode._actions[:, 0]
     cost = episode.costs
-    
 
-    if figure is None:  
+    if figure is None:
         figure, axes = plt.subplots(5, figsize=(10, 8))
     else:
         plt.figure(figure.number)
@@ -545,8 +562,8 @@ def plot_swingup_state_history(
     axes[1].plot(pole_sine, label="sin")
     axes[1].axhline(0, color="grey", linestyle=":", label="target")
     axes[1].set_title("Angle")
-#   axes[1].set_ylim((-1.0, 1,0))
-    #axes[1].set_ylabel("Angle")
+    #   axes[1].set_ylim((-1.0, 1,0))
+    # axes[1].set_ylabel("Angle")
     axes[1].legend()
 
     axes[2].plot(td, label="pole_velocity")
@@ -559,10 +576,10 @@ def plot_swingup_state_history(
     axes[3].set_title("Control")
     axes[3].set_ylabel("Velocity")
     axes[3].legend(loc="upper left")
- #   axes2b = axs[3].twinx()
- #   axes2b.plot(x_s, color="black", alpha=0.4, label="True Velocity")
- #   axes2b.set_ylabel("Steps/s")
- #   axes2b.legend(loc="upper right")
+    #   axes2b = axs[3].twinx()
+    #   axes2b.plot(x_s, color="black", alpha=0.4, label="True Velocity")
+    #   axes2b.set_ylabel("Steps/s")
+    #   axes2b.legend(loc="upper right")
 
     if cost is not None:
         axes[4].plot(cost, label="cost")
@@ -579,12 +596,12 @@ def plot_swingup_state_history(
         title = title + " - " + title_string
 
     figure.suptitle(title)
-   
+
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     if filename:
         figure.savefig(filename)
         # plt.close(figure)
-    
+
     if do_display:
         plt.pause(0.01)
     else:
