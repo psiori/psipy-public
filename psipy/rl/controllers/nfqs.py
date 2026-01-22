@@ -322,6 +322,7 @@ class NFQs(Controller):
                        single control deviations channel in the neural network's
                        input.
         doubleq: Whether to employ "Double Q Learning".
+        num_repeat: Each sampled action is repeated for 'num_repeat' steps before a new one is sampled. Set to 1 to disable.
         optimizer: The network optimizer to use, as a string or Keras optimizer.
         prioritized: Whether or not the incoming minibatches are prioritized;
              if so, the loss will be weighted via replay importance
@@ -349,7 +350,6 @@ class NFQs(Controller):
             action_values=action_values,
             lookback=lookback,
             control_pairs=control_pairs,
-            num_repeat=num_repeat,
             doubleq=doubleq,
             disable_terminals=disable_terminals,
             **kwargs,
@@ -421,8 +421,10 @@ class NFQs(Controller):
         action_normalizer.fit(self._action_values)
         self.action_normalizer = action_normalizer  # this will automatically repopulate the self.action_values_normalized
 
+        # Maximum number of times an action can be repeated
         self.action_repeat_max = num_repeat
-        self.action_repeat = 0
+        # How many times this action has been repeated. We count the original action as the first repeat.
+        self.action_repeat_count = 0
         self._prev_raw_act_and_meta: Optional[
             Tuple[np.ndarray, Dict[str, np.ndarray]]
         ] = None
@@ -471,27 +473,27 @@ class NFQs(Controller):
         Args:
             stack: ``(N, CHANNELS, LOOKBACK)`` shaped stacks of observations.
         """
-        if random.random() < self.epsilon or self.action_repeat > 0:
-            if self.action_repeat == 0:
-                action_indices = np.random.randint(
-                    low=0, high=len(self.action_values), size=(stacks.shape[0], 1)
-                ).ravel()  # TODO (AH/SL): not 100% sure why this is needed after switch to multi-dimensional actions.
-                actions = self.action_values[action_indices]  # shape (N, ACT_DIM)
-                if self._action_indices is not None:
-                    meta = dict(
-                        index=self._action_indices[action_indices], nodoe=actions
-                    )
-                else:
-                    meta = dict(nodoe=actions)
-                # Randomly alter how long actions are held
-                self.action_repeat = self.action_repeat_max
-                if self.action_repeat_max > 1:
-                    self.action_repeat = random.randint(1, self.action_repeat_max)
-                self._prev_raw_act_and_meta = (actions, meta)
-            else:  # repeat_count > 0
-                actions, meta = cast(Tuple, self._prev_raw_act_and_meta)
-                self.action_repeat -= 1
-        else:
+        if (
+            self.action_repeat_count > 0
+            and self.action_repeat_count < self.action_repeat_max
+        ):  # Repeating an action
+            actions, meta = cast(Tuple, self._prev_raw_act_and_meta)
+            self.action_repeat_count += 1
+        elif random.random() < self.epsilon:  # Random exploration
+            action_indices = np.random.randint(
+                low=0, high=len(self.action_values), size=(stacks.shape[0], 1)
+            ).ravel()  # TODO (AH/SL): not 100% sure why this is needed after switch to multi-dimensional actions.
+            actions = self.action_values[action_indices]  # shape (N, ACT_DIM)
+            if self._action_indices is not None:
+                meta = dict(index=self._action_indices[action_indices], nodoe=actions)
+            else:
+                meta = dict(nodoe=actions)
+
+            # TODO: Not sure why this is wanted
+            # Randomly alter how long actions are held
+            self.action_repeat_count = random.randint(1, self.action_repeat_max)
+            self._prev_raw_act_and_meta = (actions, meta)
+        else:  # Choose best action
             stacks = self.preprocess_observations(stacks)
             stacks = make_state_action_pairs(stacks, self.action_values_normalized)
 
@@ -504,7 +506,8 @@ class NFQs(Controller):
                 meta = dict(index=self._action_indices[action_indices], nodoe=actions)
             else:
                 meta = dict(nodoe=actions)
-            self.action_repeat = 0
+            self.action_repeat_count = 1
+            self._prev_raw_act_and_meta = (actions, meta)
         if self.idoe:
             actions = self.doe_transform(actions)
         return actions, meta
@@ -581,7 +584,7 @@ class NFQs(Controller):
     def notify_episode_stops(self) -> None:
         """Handles post-episode cleanup, called from the loop."""
         self._memory.clear()
-        self.action_repeat = 0
+        self.action_repeat_count = 0
         self._prev_raw_act_and_meta = None
 
     @property
