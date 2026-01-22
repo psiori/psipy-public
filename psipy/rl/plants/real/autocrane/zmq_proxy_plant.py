@@ -241,29 +241,51 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         """
         Draws a random set point for the trolley position from the allowed
         range. Set points will be at least 10% of the movement range away from
-        the limits.
+        the limits and at least 1 meter away from the current trolley position.
         """
         if self.trolley_min is None or self.trolley_max is None:
             return 
         
+        # Calculate valid range with buffer from limits
+        buffer = 0.1 * (self.trolley_max - self.trolley_min)
+        valid_min = self.trolley_min + buffer
+        valid_max = self.trolley_max - buffer
+        
         # Make sure the set point is not too close to the limits and also
-        # not too close to the current position
+        # not too close to the current position (minimum distance of 1 meter)
         if self._current_state is not None and "trolley_pos" in self._current_state:
             current_trolley_pos = self._current_state["trolley_pos"]
-            min_dist = 0.1 * (self.trolley_max - self.trolley_min)
-            if current_trolley_pos - min_dist > self.trolley_min:
-                min_dist = current_trolley_pos - self.trolley_min
-            if current_trolley_pos + min_dist < self.trolley_max:
-                min_dist = self.trolley_max - current_trolley_pos
-            self.set_point_trolley = np.random.uniform(
-                current_trolley_pos - min_dist,
-                current_trolley_pos + min_dist
-            )
+            min_distance = 1.0
+            
+            # Calculate ranges that are at least min_distance away from current position
+            left_range_min = valid_min
+            left_range_max = min(current_trolley_pos - min_distance, valid_max)
+            right_range_min = max(current_trolley_pos + min_distance, valid_min)
+            right_range_max = valid_max
+            
+            # Collect valid ranges
+            valid_ranges = []
+            if left_range_min < left_range_max:
+                valid_ranges.append((left_range_min, left_range_max))
+            if right_range_min < right_range_max:
+                valid_ranges.append((right_range_min, right_range_max))
+            
+            if valid_ranges:
+                # Pick a random range and then a random point within it
+                range_min, range_max = valid_ranges[np.random.randint(len(valid_ranges))]
+                self.set_point_trolley = np.random.uniform(range_min, range_max)
+            else:
+                # Edge case: current position is too close to limits
+                # Pick the farthest valid position
+                if current_trolley_pos - min_distance >= valid_min:
+                    self.set_point_trolley = current_trolley_pos - min_distance
+                elif current_trolley_pos + min_distance <= valid_max:
+                    self.set_point_trolley = current_trolley_pos + min_distance
+                else:
+                    # Fallback: use center of valid range
+                    self.set_point_trolley = (valid_min + valid_max) / 2.0
         else:
-            self.set_point_trolley = np.random.uniform(
-                self.trolley_min + 0.1 * (self.trolley_max - self.trolley_min),
-                self.trolley_max - 0.1 * (self.trolley_max - self.trolley_min)
-            )
+            self.set_point_trolley = np.random.uniform(valid_min, valid_max)
 
         if self.hoist_min is None or self.hoist_max is None:
             return
