@@ -28,6 +28,9 @@ class RLMetricsPlot:
     def save(self, filename=None):
         filename = self.filename if filename is None else filename
         self._maybe_plot()
+        if self.fig is None or filename is None:
+            print("No figure or no filename to save metrics plot")
+            return
         self.fig.savefig(filename)
 
     def _is_notebook(self):
