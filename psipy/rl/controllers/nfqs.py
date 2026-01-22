@@ -3,6 +3,10 @@
 #
 # Copyright (C) PSIORI GmbH, Germany
 # Proprietary and confidential, all rights reserved.
+#
+# Author: Alexander Höreth (2020)
+#
+
 
 """Single Output Neural Fitted Q-Iteration
 ==========================================
@@ -486,9 +490,15 @@ class NFQs(Controller):
             ).ravel()  # TODO (AH/SL): not 100% sure why this is needed after switch to multi-dimensional actions.
             actions = self.action_values[action_indices]  # shape (N, ACT_DIM)
             if self._action_indices is not None:
-                meta = dict(index=self._action_indices[action_indices], nodoe=actions)
+                meta = dict(
+                    index=self._action_indices[action_indices],
+                    nodoe=actions,
+                    is_random=np.ones((stacks.shape[0], 1), dtype=bool),
+                )
             else:
-                meta = dict(nodoe=actions)
+                meta = dict(
+                    nodoe=actions, is_random=np.ones((stacks.shape[0], 1), dtype=bool)
+                )
 
             # TODO: Not sure why this is wanted
             # Randomly alter how long actions are held
@@ -507,9 +517,16 @@ class NFQs(Controller):
             action_indices = action_indices.astype(np.int32).ravel()
             actions = self.action_values[action_indices]  # shape (N, ACT_DIM)
             if self._action_indices is not None:
-                meta = dict(index=self._action_indices[action_indices], nodoe=actions)
+                meta = dict(
+                    index=self._action_indices[action_indices],
+                    nodoe=actions,
+                    is_random=np.zeros((stacks.shape[0], 1), dtype=bool),
+                )
             else:
-                meta = dict(nodoe=actions)
+                meta = dict(
+                    nodoe=actions, 
+                    is_random=np.zeros((stacks.shape[0], 1), dtype=bool),
+                )
             self.action_repeat_count = 1
             self._prev_raw_act_and_meta = (actions, meta)
         if self.idoe:

@@ -1,3 +1,25 @@
+# PSIORI Machine Learning Toolbox
+# ===========================================
+#
+# Copyright (C) PSIORI GmbH, Germany
+# Proprietary and confidential, all rights reserved.
+#
+# Author: Alexander Höreth (2019)
+#
+
+
+"""Neural Fitted Q-Iteration
+==========================================
+
+Implementation of a Neural Fitted Q controller, which is based on a neural
+model with states as input and multiple q values as output, one per legal
+discrete action.
+
+.. autosummary::
+
+    NFQ
+
+"""
 import os
 import logging
 import random

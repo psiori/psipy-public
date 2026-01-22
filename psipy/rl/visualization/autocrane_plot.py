@@ -57,10 +57,12 @@ class AutocraneTrolleyTrajectoryPlot:
         episode: Episode,
         episode_num: int | None = None,
         title_string: str | None = None,
+        is_random: np.ndarray | None = None,
     ):
         self.episode = episode
         self.episode_num = episode_num
         self.title_string = title_string
+        self.is_random = is_random
         self.dirty = True
 
     def plot(self):
@@ -186,6 +188,29 @@ class AutocraneTrolleyTrajectoryPlot:
         self.axs[axis_counter].plot(
             x_s, color="black", alpha=0.4, label="trolley_velocity"
         )
+        if self.is_random is not None and len(self.is_random) > 0:
+            is_random_flat = (
+                self.is_random.ravel()
+                if len(self.is_random.shape) > 1
+                else self.is_random
+            )
+            # Align is_random with actions array (accounting for lookback)
+            # Actions array excludes initial lookback-1 observations in episode.observations
+            # but _actions includes all actions
+            min_len = min(len(is_random_flat), len(a))
+            is_random_aligned = is_random_flat[:min_len]
+            a_aligned = a[:min_len]
+            random_indices = np.where(is_random_aligned)[0]
+            if len(random_indices) > 0:
+                self.axs[axis_counter].scatter(
+                    random_indices,
+                    a_aligned[random_indices],
+                    color="red",
+                    marker="x",
+                    s=50,
+                    zorder=5,
+                    label="random action",
+                )
         self.axs[axis_counter].axhline(0, color="grey", linestyle=":")
         self.axs[axis_counter].set_title("Control")
         self.axs[axis_counter].set_ylabel("Velocity")
