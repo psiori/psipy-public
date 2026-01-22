@@ -247,7 +247,7 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
             return 
         
         # Calculate valid range with buffer from limits
-        buffer = 0.1 * (self.trolley_max - self.trolley_min)
+        buffer = 0.2 * (self.trolley_max - self.trolley_min)
         valid_min = self.trolley_min + buffer
         valid_max = self.trolley_max - buffer
         
