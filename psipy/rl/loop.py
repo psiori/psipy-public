@@ -32,7 +32,7 @@ import numpy as np
 from psipy.rl.core.controller import Controller
 from psipy.rl.core.cycle_manager import CM
 from psipy.rl.core.exceptions import NotNotifiedOfEpisodeStart
-from psipy.rl.core.plant import Plant, State, TAction, TState
+from psipy.rl.core.plant import Action, Plant, State, TAction, TState
 from psipy.rl.io.sart import SARTLogger
 
 __all__ = ["Loop", "LoopPrettyPrinter"]
@@ -138,10 +138,19 @@ class Loop:
         episodes: int = 1,
         max_episode_steps: int = -1,
         max_writer_steps: Optional[int] = None,
+        step_callback: Optional[
+            Callable[[int, State, Action, State, float], None]
+        ] = None,
     ) -> Dict[int, Dict[str, Any]]:
         """Runs the loop for "episodes" many episodes
 
         By passing a negative number for episodes, the loop runs forever.
+
+        Args:
+            episodes: Number of episodes to run (-1 for infinite).
+            max_episode_steps: Maximum steps per episode.
+            max_writer_steps: Steps before SART rollover.
+            step_callback: Optional callback(step, state, action, next_state, cost) called each step.
 
         Returns:
             Metrics of the completed episodes
@@ -153,6 +162,7 @@ class Loop:
                 episode,
                 max_steps=max_episode_steps,
                 max_writer_steps=max_writer_steps,
+                step_callback=step_callback,
             )
             if break_all:
                 break
@@ -168,16 +178,28 @@ class Loop:
         max_writer_steps: Optional[int] = None,
         initial_state: Optional[State] = None,
         pretty_printer: Optional[LoopPrettyPrinter] = None,
+        step_callback: Optional[
+            Callable[[int, State, Action, State, float], None]
+        ] = None,
     ) -> bool:
-        """Runs a single episode."""
+        """Runs a single episode.
+
+        Args:
+            episode_number: Episode number.
+            max_steps: Maximum steps per episode (-1 for unlimited).
+            max_writer_steps: Steps before SART rollover.
+            initial_state: Optional initial state.
+            pretty_printer: Optional pretty printer for transitions.
+            step_callback: Optional callback(step, state, action, next_state, cost) called each step.
+        """
 
         self.trajectory: List[State] = []
+        
+        LOG.info(f"Loop starts, episode {episode_number}...")
+        step: int = 0
+        total_cost: Union[int, float] = 0
+        start_time: float = time.time()
         try:
-            LOG.info(f"Loop starts, episode {episode_number}...")
-            cycles: int = 0
-            total_cost: Union[int, float] = 0
-            start_time: float = time.time()
-
             CM.notify_episode_starts(
                 episode_number,
                 self.plant.__class__.__name__,
@@ -193,7 +215,7 @@ class Loop:
             # self.trajectory.append(state) # TODO(SL): this was missing. Please check and leave a comment if it was intentional.
 
             while True:
-                cycles += 1
+                step += 1
                 CM["loop"].tick()
                 self.plant.cycle_started()
 
@@ -209,6 +231,10 @@ class Loop:
                 CM.step(data)  # Increments step counter.
                 with CM["sart-append"]:
                     self.sart.append(data)
+
+                # Call cycle callback if provided
+                if step_callback is not None:
+                    step_callback(step, state, action, next_state, cost)
 
                 # TODO: Remove all plant side costs?
                 if pretty_printer is not None:
@@ -237,8 +263,8 @@ class Loop:
 
                 if (
                     max_writer_steps is not None
-                    and cycles > 0
-                    and cycles % max_writer_steps == 0
+                    and step > 0
+                    and step % max_writer_steps == 0
                 ):
                     LOG.info(
                         f"Max writer steps reached. Rolling over SART file within episode after {cycles} cycles..."
@@ -273,7 +299,7 @@ class Loop:
                 pass
             self.metrics[episode_number] = {
                 "total_cost": total_cost,
-                "cycles_run": cycles,
+                "cycles_run": step,
                 "wall_time_s": round(time.time() - start_time, 4),
             }
 
