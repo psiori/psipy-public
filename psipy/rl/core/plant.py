@@ -711,8 +711,8 @@ class Plant(Generic[TState, TAction], metaclass=ABCMeta):
     """
 
     renderable: ClassVar[bool] = False
-    state_type: ClassVar[Type[TState]]
-    action_type: ClassVar[Type[TAction]]
+    state_type: ClassVar[Type[State]]
+    action_type: ClassVar[Type[Action]]
     meta_keys: ClassVar[Tuple[str, ...]] = ()
 
     _current_state: TState
@@ -796,7 +796,9 @@ class Plant(Generic[TState, TAction], metaclass=ABCMeta):
 
     @classmethod
     def cost_func_wrapper(
-        cls, cost_func: Callable[[np.ndarray], np.ndarray], state_channels: List[str]
+        cls,
+        cost_func: Callable[[np.ndarray], np.ndarray],
+        state_channels: Tuple[str, ...],
     ) -> Callable[[TState], float]:
         """convenience function that wraps a vecotrized cost function that is used with controllers to accept a single state object instead, thus, making it compatible with plant-internal state representations and the plant's expectations on a cost function. If you have a cost function that is working with your
         controllers, you can use this wrapper to make it compatible and pass it
