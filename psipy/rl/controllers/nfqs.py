@@ -143,7 +143,7 @@ def make_state_action_pairs(
         assert "actions" not in states
         states["actions"] = np.tile(action_values, (n_states, 1))
 
-    LOG.debug("STATE_ACTION_PAIRS", states)
+    LOG.debug(f"STATE_ACTION_PAIRS {states}")
     return states
 
 
@@ -364,7 +364,7 @@ class NFQs(Controller):
         self._model = model
         self.control_pairs = control_pairs
 
-        LOG.debug("ACTION VALUES HANDED TO INIT", action_values)
+        LOG.debug(f"ACTION VALUES HANDED TO INIT {action_values}")
 
         if action_indices is not None:
             self._action_indices = np.asarray(action_indices, dtype=int)
@@ -404,9 +404,9 @@ class NFQs(Controller):
 
         self._action_values = np.asarray(action_values, dtype=float)
 
-        LOG.info("USED ACTION VALUES %s", self._action_values)
-        LOG.info("USED ACTION INDICES %s", self._action_indices)
-        LOG.info("USED ACTION VALUES SHAPE %s", self._action_values.shape)
+        LOG.info(f"USED ACTION VALUES {self._action_values}")
+        LOG.info(f"USED ACTION INDICES {self._action_indices}")
+        LOG.info(f"USED ACTION VALUES SHAPE {self._action_values.shape}")
 
         self.epsilon = 0.0
         self._memory = ObservationStack((len(self.state_channels),), lookback=lookback)
@@ -529,7 +529,7 @@ class NFQs(Controller):
         self._config["action_values"] = (
             action_values  # not converted, like in constructor
         )
-        LOG.info("CONFIG AFTER NEW ACTION VALUES %s", self._config)
+        LOG.info(f"CONFIG AFTER NEW ACTION VALUES {self._config}")
 
     def preprocess_observations(self, stacks: np.ndarray) -> np.ndarray:
         """Preprocesses observation stacks before those are passed to the network.
@@ -759,21 +759,19 @@ class NFQs(Controller):
         config = zipfile.get("config.json")
         model = zipfile.get_keras("model.keras", custom_objects)
         action_meta = zipfile.get_json("Action.json")
-        LOG.info("NFQs._load action meta: %s", action_meta)
-        LOG.info("NFQs._load config: %s", config)
+        LOG.info(f"NFQs._load action meta: {action_meta}")
+        LOG.info(f"NFQs._load config: {config}")
         assert isinstance(action_meta, dict)
         action_type = cls.load_action_type(action_meta, custom_objects)
         obj = cls(model=model, action=action_type, **config)
         obj.normalizer = StackNormalizer.load(zipfile)
         LOG.info(
-            "NFQs._load loaded normalizer with configuration: %s",
-            obj.normalizer.get_config(),
+            f"NFQs._load loaded normalizer with configuration: {obj.normalizer.get_config()}"
         )
         try:
             obj.action_normalizer = StackNormalizer.load(zipfile, "action_normalizer")
             LOG.info(
-                "NFQs._load loaded action_normalizer with configuration:",
-                obj.action_normalizer.get_config(),
+                f"NFQs._load loaded action_normalizer with configuration: {obj.action_normalizer.get_config()}"
             )
         except Exception as e:
             LOG.warning(
