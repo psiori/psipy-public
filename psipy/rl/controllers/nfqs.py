@@ -352,6 +352,7 @@ class NFQs(Controller):
             control_pairs=control_pairs,
             doubleq=doubleq,
             disable_terminals=disable_terminals,
+            num_repeat=num_repeat,
             **kwargs,
         )
         self.disable_terminals = disable_terminals
@@ -491,7 +492,10 @@ class NFQs(Controller):
 
             # TODO: Not sure why this is wanted
             # Randomly alter how long actions are held
-            self.action_repeat_count = random.randint(1, self.action_repeat_max)
+            if self.action_repeat_max >= 1:
+                self.action_repeat_count = random.randint(1, self.action_repeat_max)
+            else:
+                self.action_repeat_count = 0
             self._prev_raw_act_and_meta = (actions, meta)
         else:  # Choose best action
             stacks = self.preprocess_observations(stacks)
