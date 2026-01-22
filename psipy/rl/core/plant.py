@@ -26,8 +26,21 @@ import logging
 from abc import ABCMeta, abstractmethod
 from collections import OrderedDict
 from math import isfinite, isnan
-from typing import Any, Callable, ClassVar, Dict, Generic, Mapping, Optional, List
-from typing import Sequence, Tuple, Type, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    Generic,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
 
 import numpy as np
 
@@ -92,7 +105,6 @@ class Action(metaclass=ABCMeta):
         data: Union[np.ndarray, Sequence[Numeric], Mapping[str, Numeric]],
         additional_data: Optional[Mapping[str, Numeric]] = None,
     ) -> None:
-    
         # Actions passed as explicit key-value pairs. May be partial.
         if isinstance(data, dict):
             if set(data.keys()).difference(self.channels):
@@ -682,16 +694,16 @@ class Plant(Generic[TState, TAction], metaclass=ABCMeta):
         .__del__
 
     Args:
-        cost_function: Cost function that maps states to costs. If provided,    
+        cost_function: Cost function that maps states to costs. If provided,
                        will override the cost coming from the plant's implementation in the returned current state. Please be
                        aware this cost function DIFFERS from the one that is used in controllers. This cost function uses A) the plant
-                       internal state representation and B) is not vectorized, 
+                       internal state representation and B) is not vectorized,
                        but expects a single state of TState as input. If you'd
                        like to use the same cost function for both controllers and plants, consider using the convenience function
                        :meth:`cost_func_wrapper` to wrap your cost function which you can find further below in this file.
 
                        Note: the standard statistics implemented in the Loop
-                       use the costs comming from the plant's implementation, 
+                       use the costs comming from the plant's implementation,
                        not the controller's cost function. Thus, it could be
                        worthwile passing the same cost function to your plant
                        in case you do not use the 'native' costs of the plant
@@ -706,9 +718,7 @@ class Plant(Generic[TState, TAction], metaclass=ABCMeta):
     _current_state: TState
     _episode_steps: int
 
-    def __init__(
-        self, cost_function: Optional[Callable[[np.ndarray], np.ndarray]] = None
-    ):
+    def __init__(self, cost_function: Optional[Callable[[TState], float]] = None):
         self._cost_function = cost_function
 
     def cycle_started(self):
@@ -786,10 +796,9 @@ class Plant(Generic[TState, TAction], metaclass=ABCMeta):
 
     @classmethod
     def cost_func_wrapper(
-        cls,
-        cost_func: Callable[[np.ndarray], np.ndarray],
-        state_channels: List[str]):
-        """ convenience function that wraps a vecotrized cost function that is used with controllers to accept a single state object instead, thus, making it compatible with plant-internal state representations and the plant's expectations on a cost function. If you have a cost function that is working with your
+        cls, cost_func: Callable[[np.ndarray], np.ndarray], state_channels: List[str]
+    ) -> Callable[[TState], float]:
+        """convenience function that wraps a vecotrized cost function that is used with controllers to accept a single state object instead, thus, making it compatible with plant-internal state representations and the plant's expectations on a cost function. If you have a cost function that is working with your
         controllers, you can use this wrapper to make it compatible and pass it
         to your plants constructor.
 
@@ -802,12 +811,11 @@ class Plant(Generic[TState, TAction], metaclass=ABCMeta):
             plant = MyPlant(cost_function=Plant.cost_func_wrapper(my_cost_func, ["position", "velocity"]))
         """
 
-        def wrapped_cost_func(state: Type[State]) -> float:
+        def wrapped_cost_func(state: TState) -> float:
             state_array = state.as_array(state_channels)
             return cost_func(np.asarray([state_array]))[0]
 
         return wrapped_cost_func
-
 
 
 if __name__ == "__main__":

@@ -93,9 +93,9 @@ class CartPoleState(State):
 
 
 def make_default_cost_function(
-    x_threshold: float = 3.6, valid_angle: float = None
-) -> Callable[[np.ndarray], np.ndarray]:
-    def cost_function(state: CartPoleState) -> np.ndarray:
+    x_threshold: float = 3.6, valid_angle: float | None = None
+) -> Callable[[CartPoleState], float]:
+    def cost_function(state: CartPoleState) -> float:
         DEFAULT_STEP_COST = 0.01
         TERMINAL_COST = 1.0
 
@@ -177,7 +177,7 @@ class CartPole(Plant[CartPoleState, CartPoleAction]):
     def __init__(
         self,
         x_threshold: float = 2.4,
-        cost_function: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+        cost_function: Optional[Callable[[CartPoleState], float]] = None,
         state_type: Type[CartPoleState] = CartPoleState,
         action_type: Type[CartPoleAction] = CartPoleBangAction,
         render_mode: str | None = "human",
