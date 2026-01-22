@@ -174,6 +174,8 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         self.hoist_min: float | None = None
         self.hoist_max: float | None = None
 
+        self._current_state: AutocraneState | None = None
+
         self._gantry_set_point: float | None = None
         self._trolley_set_point: float | None = None
         self._hoist_set_point: float | None = None
@@ -244,10 +246,24 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         if self.trolley_min is None or self.trolley_max is None:
             return 
         
-        self.set_point_trolley = np.random.uniform(
-            self.trolley_min + 0.1 * (self.trolley_max - self.trolley_min),
-            self.trolley_max - 0.1 * (self.trolley_max - self.trolley_min)
-        )
+        # Make sure the set point is not too close to the limits and also
+        # not too close to the current position
+        if self._current_state is not None and "trolley_pos" in self._current_state:
+            current_trolley_pos = self._current_state["trolley_pos"]
+            min_dist = 0.1 * (self.trolley_max - self.trolley_min)
+            if current_trolley_pos - min_dist > self.trolley_min:
+                min_dist = current_trolley_pos - self.trolley_min
+            if current_trolley_pos + min_dist < self.trolley_max:
+                min_dist = self.trolley_max - current_trolley_pos
+            self.set_point_trolley = np.random.uniform(
+                current_trolley_pos - min_dist,
+                current_trolley_pos + min_dist
+            )
+        else:
+            self.set_point_trolley = np.random.uniform(
+                self.trolley_min + 0.1 * (self.trolley_max - self.trolley_min),
+                self.trolley_max - 0.1 * (self.trolley_max - self.trolley_min)
+            )
 
         if self.hoist_min is None or self.hoist_max is None:
             return
