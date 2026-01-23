@@ -510,7 +510,11 @@ class NFQs(Controller):
             self._prev_raw_act_and_meta = (actions, meta)
         else:  # Choose best action
             stacks = self.preprocess_observations(stacks)
-            stacks_batch_size = stacks.shape[0]
+            # Handle both dictionary and numpy array returns from preprocess_observations
+            if isinstance(stacks, dict):
+                stacks_batch_size = len(next(iter(stacks.values())))
+            else:
+                stacks_batch_size = stacks.shape[0]
             stacks = make_state_action_pairs(stacks, self.action_values_normalized)
 
             with CM["get-actions-predict"]:
@@ -561,7 +565,9 @@ class NFQs(Controller):
         )
         print("CONFIG AFTER NEW ACTION VALUES", self._config)
 
-    def preprocess_observations(self, stacks: np.ndarray) -> np.ndarray:
+    def preprocess_observations(
+        self, stacks: np.ndarray
+    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         """Preprocesses observation stacks before those are passed to the network.
 
         Employed in both the local :meth:`get_actions` method as well as in the
@@ -569,6 +575,11 @@ class NFQs(Controller):
 
         Args:
           stacks: Observation stacks of shape ``(BATCH, CHANNELS, LOOKBACK)``.
+
+        Returns:
+          Preprocessed stacks as numpy array or dictionary of numpy arrays.
+          Subclasses may override to return dictionaries for models with
+          multiple inputs.
         """
         channels = self.state_channels
         if self.control_pairs is not None:
