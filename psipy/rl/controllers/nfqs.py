@@ -493,11 +493,12 @@ class NFQs(Controller):
                 meta = dict(
                     index=self._action_indices[action_indices],
                     nodoe=actions,
-                    is_random=np.ones((stacks.shape[0], 1), dtype=bool),
+                    is_random=np.ones((stacks.shape[0], actions.shape[1]), dtype=bool),
                 )
             else:
                 meta = dict(
-                    nodoe=actions, is_random=np.ones((stacks.shape[0], 1), dtype=bool)
+                    nodoe=actions,
+                    is_random=np.ones((stacks.shape[0], actions.shape[1]), dtype=bool),
                 )
 
             # TODO: Not sure why this is wanted
@@ -509,6 +510,7 @@ class NFQs(Controller):
             self._prev_raw_act_and_meta = (actions, meta)
         else:  # Choose best action
             stacks = self.preprocess_observations(stacks)
+            stacks_batch_size = stacks.shape[0]
             stacks = make_state_action_pairs(stacks, self.action_values_normalized)
 
             with CM["get-actions-predict"]:
@@ -520,12 +522,16 @@ class NFQs(Controller):
                 meta = dict(
                     index=self._action_indices[action_indices],
                     nodoe=actions,
-                    is_random=np.zeros((stacks.shape[0], 1), dtype=bool),
+                    is_random=np.zeros(
+                        (stacks_batch_size, actions.shape[1]), dtype=bool
+                    ),
                 )
             else:
                 meta = dict(
-                    nodoe=actions, 
-                    is_random=np.zeros((stacks.shape[0], 1), dtype=bool),
+                    nodoe=actions,
+                    is_random=np.zeros(
+                        (stacks_batch_size, actions.shape[1]), dtype=bool
+                    ),
                 )
             self.action_repeat_count = 1
             self._prev_raw_act_and_meta = (actions, meta)
