@@ -453,6 +453,11 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
             print("ZMQProxy: Hoist limit reached. Terminal state. Hoist position:", hoist_pos, "limits:", self.hoist_min, "-", self.hoist_max)
             new_state.terminal = True
 
+        # sway limit
+        if state_dict["grapple_sway_trolley"] > 0.3 or state_dict["grapple_sway_trolley"] < -0.3:
+            print("ZMQProxy: Sway limit reached. Terminal state. Sway:", state_dict["grapple_sway_trolley"])
+            new_state.terminal = True
+
         return new_state
 
     def _receive_message(self) -> dict:
