@@ -319,9 +319,10 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         self.gantry_max = float(message["gantry_pos_max"]) 
         
         # 0.20 m buffer wasn't enough, with a lot of sway the grapple can hit the middle column
-        trolley_buffer = 0.50
-        self.trolley_min = float(message["trolley_pos_min"]) + trolley_buffer
-        self.trolley_max = float(message["trolley_pos_max"]) - trolley_buffer
+        trolley_buffer_inside = 1.0
+        trolley_buffer_outside = 0.50
+        self.trolley_min = float(message["trolley_pos_min"]) + trolley_buffer_inside
+        self.trolley_max = float(message["trolley_pos_max"]) - trolley_buffer_outside
         if self.trolley_min > self.trolley_max:
             raise ValueError("Trolley min is greater than trolley max")
        
