@@ -194,7 +194,7 @@ class Loop:
         """
 
         self.trajectory: List[State] = []
-        
+
         LOG.info(f"Loop starts, episode {episode_number}...")
         step: int = 0
         total_cost: Union[int, float] = 0
@@ -267,10 +267,10 @@ class Loop:
                     and step % max_writer_steps == 0
                 ):
                     LOG.info(
-                        f"Max writer steps reached. Rolling over SART file within episode after {cycles} cycles..."
+                        f"Max writer steps reached. Rolling over SART file within episode after {step} steps..."
                     )
                     print(
-                        f"Max writer steps reached. Rolling over SART file within episode after {cycles} cycles..."
+                        f"Max writer steps reached. Rolling over SART file within episode after {step} steps..."
                     )
                     self.sart.do_rollover()
 
