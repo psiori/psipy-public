@@ -34,23 +34,23 @@ dependencies = [
     "tqdm",
     "xxhash",
 ]
-optional-dependencies = {
-    dev = [
-        "flake8",
-        "flake8-bugbear",
-        "flaky",
-        "isort",
-        "jupyter",
-        "mypy",
-        "pre-commit",
-        "pytest",
-        "pytest-cov",
-        "recommonmark",
-        "Sphinx",
-        "sphinx-autodoc-typehints",
-        "sphinx_rtd_theme",
-    ],
-}
+
+[project.optional-dependencies]
+dev = [
+    "flake8",
+    "flake8-bugbear",
+    "flaky",
+    "isort",
+    "jupyter",
+    "mypy",
+    "pre-commit",
+    "pytest",
+    "pytest-cov",
+    "recommonmark",
+    "Sphinx",
+    "sphinx-autodoc-typehints",
+    "sphinx_rtd_theme",
+]
 
 [project.scripts]
 tui = "psipy.rl.io.terminal_interface:main"
