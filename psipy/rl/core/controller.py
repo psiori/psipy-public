@@ -63,12 +63,15 @@ class Controller(IDMixin, Saveable, metaclass=ABCMeta):
         state_channels: Tuple[str, ...],
         action: Type[Action],
         action_channels: Optional[Tuple[str, ...]] = None,
+        lookback: Optional[int] = None,
         **kwargs,
     ):
         self.action_channels = action.channels
         if action_channels is not None:
             assert all(channel in action.channels for channel in action_channels)
             self.action_channels = action_channels
+        if lookback is not None:
+            self.lookback = lookback
         super().__init__(
             state_channels=state_channels,
             action_channels=self.action_channels,
