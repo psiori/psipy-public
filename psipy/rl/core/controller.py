@@ -69,8 +69,7 @@ class Controller(IDMixin, Saveable, metaclass=ABCMeta):
         if action_channels is not None:
             assert all(channel in action.channels for channel in action_channels)
             self.action_channels = action_channels
-        if lookback is not None:
-            self.lookback = lookback
+        self.lookback = lookback
         super().__init__(
             state_channels=state_channels,
             action_channels=self.action_channels,
