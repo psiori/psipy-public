@@ -151,6 +151,7 @@ class Loop:
             max_episode_steps: Maximum steps per episode.
             max_writer_steps: Steps before SART rollover.
             step_callback: Optional callback(step, state, action, next_state, cost) called each step.
+                This should be a cheap function call so that it doesn't slow down the loop.
 
         Returns:
             Metrics of the completed episodes
@@ -191,6 +192,7 @@ class Loop:
             initial_state: Optional initial state.
             pretty_printer: Optional pretty printer for transitions.
             step_callback: Optional callback(step, state, action, next_state, cost) called each step.
+                This should be a cheap function call so that it doesn't slow down the loop.
         """
 
         self.trajectory: List[State] = []
@@ -232,7 +234,7 @@ class Loop:
                 with CM["sart-append"]:
                     self.sart.append(data)
 
-                # Call cycle callback if provided
+                # Call step callback if provided
                 if step_callback is not None:
                     step_callback(step, state, action, next_state, cost)
 
