@@ -125,6 +125,8 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         action_socket (zmq.Socket): The ZMQ publisher socket for sending actions.
         _last_cycle_number (int): Keeps track of the last cycle number received.
         _randomize_set_points (bool): Whether to randomize set points.
+        gantry_min (float): The minimum position of the gantry.
+        gantry_max (float): The maximum position of the gantry.
         trolley_min (float): The minimum position of the trolley.
         trolley_max (float): The maximum position of the trolley.
 
@@ -198,6 +200,8 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
             alternating_set_points and not randomize_set_points
         )
         self.next_option = 0
+        self.gantry_min: float | None = None
+        self.gantry_max: float | None = None
         self.trolley_min: float | None = None
         self.trolley_max: float | None = None
         self.hoist_min: float | None = None
