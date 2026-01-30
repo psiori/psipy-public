@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 import numpy as np
 import zmq
@@ -71,6 +71,18 @@ class ExtendedAutocraneTrolleyAction(AutocraneAction):
     legal_values = ((-0.268, -0.082, 0.0, 0.082, 0.268),)
 
 
+class AutocraneGantryAction(AutocraneAction):
+    dtype = "discrete"
+    channels = ("gantry_target_vel",)
+    legal_values = ((-1.0, 0.0, 1.0),)
+
+
+class ExtendedAutocraneGantryAction(AutocraneAction):
+    dtype = "discrete"
+    channels = ("gantry_target_vel",)
+    legal_values = ((-1.0, -0.5, 0.0, 0.5, 1.0),)
+
+
 class AutocraneTrolleyHoistAction(AutocraneAction):
     dtype = "discrete"
     channels = (
@@ -140,7 +152,8 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         randomize_set_points: bool = True,
         alternating_set_points: bool = False,
         hoist_active: bool = False,
-        action_type: AutocraneAction = None,
+        action_type: Optional[AutocraneAction] = None,
+        axis: Literal["trolley", "gantry"] = "trolley",
         sway_terminal_margin: float = 0.3,
         good_terminal_sway_margin: float = 0.02,
         good_terminal_distance_margin: float = 0.05,
@@ -154,12 +167,14 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
             state_sub_address (str): The address of the ZMQ subscriber socket for receiving states.
             action_pub_address (str): The address of the ZMQ publisher socket for sending actions.
             randomize_set_points (bool): Whether to randomize set points.
+            axis (str): Which axis to control: "trolley" or "gantry" (default: "trolley").
             sway_terminal_margin (float): Sway threshold for bad terminal state (default: 0.3).
             good_terminal_sway_margin (float): Maximum sway angle for good terminal state (default: 0.02).
             good_terminal_distance_margin (float): Maximum distance to setpoint for good terminal state (default: 0.05).
             good_terminal_consecutive_steps (int): Number of consecutive steps within margins to trigger good terminal (default: 10).
         """
         self.hoist_active = hoist_active
+        self._axis = axis
 
         super().__init__(**kwargs)
         self.context = zmq.Context()
@@ -232,10 +247,56 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         print(f"Setting set point to {position}")
         self._hoist_set_point = position
 
+    @property
+    def set_point_gantry(self):
+        """
+        The current set point for the gantry position.
+        """
+        return self._gantry_set_point
+
+    @set_point_gantry.setter
+    def set_point_gantry(self, position: float):
+        """
+        Sets the set point for the gantry position.
+        """
+        print(f"Setting gantry set point to {position}")
+        self._gantry_set_point = position
+
     def set_alternating_set_point(self):
         """
-        Sets the set point for the trolley position to the alternating set point.
+        Sets the set point for the controlled axis (trolley or gantry) to the alternating set point.
         """
+        if self._axis == "gantry":
+            if self.gantry_min is None or self.gantry_max is None:
+                return
+            gantry_buffer = 0.6
+            gantry_center = (self.gantry_min + self.gantry_max) / 2.0
+            hoist_low = (self.hoist_min + 0.4) if self.hoist_min is not None else 0.0
+            hoist_high = (self.hoist_max - 0.4) if self.hoist_max is not None else 0.0
+            hoist_mid = (
+                ((self.hoist_min + self.hoist_max) / 2.0)
+                if (self.hoist_min is not None and self.hoist_max is not None)
+                else 0.0
+            )
+            options = (
+                (self.gantry_min + gantry_buffer, hoist_low),
+                (self.gantry_max - gantry_buffer, hoist_low),
+                (gantry_center, hoist_mid),
+                (self.gantry_min + gantry_buffer, hoist_high),
+                (self.gantry_max - gantry_buffer, hoist_high),
+            )
+            self.set_point_gantry = options[self.next_option][0]
+            if (
+                self.hoist_active
+                and self.hoist_min is not None
+                and self.hoist_max is not None
+            ):
+                self.set_point_hoist = options[self.next_option][1]
+            self.next_option = (self.next_option + 1) % len(options)
+            print(
+                f"Setting alternating set points to gantry={self.set_point_gantry}, hoist={getattr(self, '_hoist_set_point', None)}"
+            )
+            return
 
         if (
             self.hoist_min is None
@@ -268,10 +329,48 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
 
     def set_random_set_point(self):
         """
-        Draws a random set point for the trolley position from the allowed
-        range. Set points will be at least 10% of the movement range away from
-        the limits and at least 1 meter away from the current trolley position.
+        Draws a random set point for the controlled axis (trolley or gantry) from the allowed
+        range. Set points will be at least 20% of the movement range away from
+        the limits and at least 1 meter away from the current position (for trolley/gantry).
         """
+        if self._axis == "gantry":
+            if self.gantry_min is None or self.gantry_max is None:
+                return
+            buffer = 0.2 * (self.gantry_max - self.gantry_min)
+            valid_min = self.gantry_min + buffer
+            valid_max = self.gantry_max - buffer
+            pos_key = "gantry_pos"
+            if self._current_state is not None and pos_key in self._current_state:
+                current_pos = self._current_state[pos_key]
+                min_distance = 1.0
+                left_range_max = min(current_pos - min_distance, valid_max)
+                right_range_min = max(current_pos + min_distance, valid_min)
+                valid_ranges = []
+                if valid_min < left_range_max:
+                    valid_ranges.append((valid_min, left_range_max))
+                if right_range_min < valid_max:
+                    valid_ranges.append((right_range_min, valid_max))
+                if valid_ranges:
+                    range_min, range_max = valid_ranges[
+                        np.random.randint(len(valid_ranges))
+                    ]
+                    self.set_point_gantry = np.random.uniform(range_min, range_max)
+                else:
+                    if current_pos - min_distance >= valid_min:
+                        self.set_point_gantry = current_pos - min_distance
+                    elif current_pos + min_distance <= valid_max:
+                        self.set_point_gantry = current_pos + min_distance
+                    else:
+                        self.set_point_gantry = (valid_min + valid_max) / 2.0
+            else:
+                self.set_point_gantry = np.random.uniform(valid_min, valid_max)
+            if self.hoist_min is not None and self.hoist_max is not None:
+                self.set_point_hoist = np.random.uniform(
+                    self.hoist_min + 0.1 * (self.hoist_max - self.hoist_min),
+                    self.hoist_max - 0.1 * (self.hoist_max - self.hoist_min),
+                )
+            return
+
         if self.trolley_min is None or self.trolley_max is None:
             return
 
@@ -492,13 +591,22 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         # Check for bad terminal states (limits and excessive sway)
         bad_terminal = False
 
-        # TODO: GANTRY LIMITS NOT YES IMPLEMNETED (FOR RADIAL CRANE)
-        # if gantry_pos <= self.gantry_min or gantry_pos >= self.gantry_max:
-        #    print("ZMQProxy: Gantry limit reached. Terminal state. Gantry position:", gantry_pos, "limits:", self.gantry_min, "-", self.gantry_max)
-        #    new_state.terminal = True
-        #    bad_terminal = True
+        if self._axis == "gantry":
+            if gantry_pos <= self.gantry_min or gantry_pos >= self.gantry_max:
+                print(
+                    "ZMQProxy: Gantry limit reached. Terminal state. Gantry position:",
+                    gantry_pos,
+                    "limits:",
+                    self.gantry_min,
+                    "-",
+                    self.gantry_max,
+                )
+                new_state.terminal = True
+                bad_terminal = True
 
-        if trolley_pos <= self.trolley_min or trolley_pos >= self.trolley_max:
+        if self._axis == "trolley" and (
+            trolley_pos <= self.trolley_min or trolley_pos >= self.trolley_max
+        ):
             print("ZMQProxy: Trolley limit reached. Terminal state.")
             new_state.terminal = True
             bad_terminal = True
@@ -515,21 +623,33 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
             new_state.terminal = True
             bad_terminal = True
 
-        # sway limit
-        if abs(state_dict["grapple_sway_trolley"]) > self._sway_terminal_margin:
+        # sway limit (use axis-appropriate sway channel)
+        sway_trolley = abs(state_dict["grapple_sway_trolley"])
+        sway_gantry = abs(state_dict["grapple_sway_gantry"])
+        sway = sway_gantry if self._axis == "gantry" else sway_trolley
+        if sway > self._sway_terminal_margin:
+            sway_key = (
+                "grapple_sway_gantry"
+                if self._axis == "gantry"
+                else "grapple_sway_trolley"
+            )
             print(
                 "ZMQProxy: Sway limit reached. Terminal state. Sway:",
-                state_dict["grapple_sway_trolley"],
+                state_dict[sway_key],
             )
             new_state.terminal = True
             bad_terminal = True
 
         # Check for good terminal state (within margins for consecutive steps)
-        if not bad_terminal and self._trolley_set_point is not None:
-            trolley_delta = abs(state_dict["trolley_set_point_delta"])
-            sway = abs(state_dict["grapple_sway_trolley"])
+        if self._axis == "gantry":
+            set_point_ok = self._gantry_set_point is not None
+            position_delta = abs(state_dict["gantry_set_point_delta"])
+        else:
+            set_point_ok = self._trolley_set_point is not None
+            position_delta = abs(state_dict["trolley_set_point_delta"])
 
-            within_distance = trolley_delta <= self._good_terminal_distance_margin
+        if not bad_terminal and set_point_ok:
+            within_distance = position_delta <= self._good_terminal_distance_margin
             within_sway = sway <= self._good_terminal_sway_margin
 
             if within_distance and within_sway:
@@ -539,7 +659,7 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
                     >= self._good_terminal_consecutive_steps
                 ):
                     print(
-                        f"ZMQProxy: Good terminal state reached. Within margins for {self._consecutive_good_steps} steps. Distance: {trolley_delta:.4f}, Sway: {sway:.4f}"
+                        f"ZMQProxy: Good terminal state reached. Within margins for {self._consecutive_good_steps} steps. Distance: {position_delta:.4f}, Sway: {sway:.4f}"
                     )
                     new_state.terminal = True
                     self._is_good_terminal = True
@@ -590,16 +710,28 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
             state_dict, action_dict, self._current_state
         )
 
-        print(
-            "\t L: {:.2f}".format(new_state["trolley_limit_dist_left"]),
-            "\t T: {:.2f}".format(new_state["trolley_set_point_delta"]),
-            "\t R: {:.2f}".format(new_state["trolley_limit_dist_right"]),
-            "\t AT: {:.3f}".format(action_dict["trolley_target_vel"]),
-            "\t\tU: {:.2f}".format(new_state["hoist_limit_dist_up"]),
-            "\t H:  {:.2f}".format(new_state["hoist_set_point_delta"]),
-            "\t D: {:.2f}".format(new_state["hoist_limit_dist_down"]),
-            "\t AH: {:.3f}".format(action_dict["hoist_target_vel"]),
-        )
+        if self._axis == "gantry":
+            print(
+                "\t L: {:.2f}".format(new_state["gantry_limit_dist_left"]),
+                "\t G: {:.2f}".format(new_state["gantry_set_point_delta"]),
+                "\t R: {:.2f}".format(new_state["gantry_limit_dist_right"]),
+                "\t AG: {:.3f}".format(action_dict["gantry_target_vel"]),
+                "\t\tU: {:.2f}".format(new_state["hoist_limit_dist_up"]),
+                "\t H:  {:.2f}".format(new_state["hoist_set_point_delta"]),
+                "\t D: {:.2f}".format(new_state["hoist_limit_dist_down"]),
+                "\t AH: {:.3f}".format(action_dict["hoist_target_vel"]),
+            )
+        else:
+            print(
+                "\t L: {:.2f}".format(new_state["trolley_limit_dist_left"]),
+                "\t T: {:.2f}".format(new_state["trolley_set_point_delta"]),
+                "\t R: {:.2f}".format(new_state["trolley_limit_dist_right"]),
+                "\t AT: {:.3f}".format(action_dict["trolley_target_vel"]),
+                "\t\tU: {:.2f}".format(new_state["hoist_limit_dist_up"]),
+                "\t H:  {:.2f}".format(new_state["hoist_set_point_delta"]),
+                "\t D: {:.2f}".format(new_state["hoist_limit_dist_down"]),
+                "\t AH: {:.3f}".format(action_dict["hoist_target_vel"]),
+            )
         self._current_state = new_state
         return new_state
 
@@ -635,11 +767,16 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         print("Received initial state from autocrane agent:", latest_message)
         state_dict = self._state_dict_from_autocrane_message(latest_message)
 
-        if self._trolley_set_point is None and self._randomize_set_points:
-            self.set_random_set_point()
-
-        if self._trolley_set_point is None and self._alternating_set_points:
-            self.set_alternating_set_point()
+        if self._axis == "gantry":
+            if self._gantry_set_point is None and self._randomize_set_points:
+                self.set_random_set_point()
+            if self._gantry_set_point is None and self._alternating_set_points:
+                self.set_alternating_set_point()
+        else:
+            if self._trolley_set_point is None and self._randomize_set_points:
+                self.set_random_set_point()
+            if self._trolley_set_point is None and self._alternating_set_points:
+                self.set_alternating_set_point()
 
         # Create the initial state
         initial_state = self._process_and_update_from(
@@ -681,39 +818,58 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
 
     def move_away_from_limits(self):
         """
-        Moves the trolley away from the limits if it is too close to them. Distance should be at least 0.50 meters.
+        Moves the controlled axis (trolley or gantry) away from the limits if too close.
+        Distance should be at least 0.10 m (trolley) or 0.10 m (gantry) from limits.
         """
-
         target_trolley_vel = 0.0
+        target_gantry_vel = 0.0
         target_hoist_vel = 0.0
 
         while True:
             message = self._receive_message()
 
             trolley_pos = float(message["trolley_pos"])
+            gantry_pos = float(message["gantry_pos"])
             hoist_pos = float(message["hoist_pos"])
 
             state_dict = self._state_dict_from_autocrane_message(message)
             self._process_and_update_from(
                 state_dict,
                 {
+                    "gantry_target_vel": target_gantry_vel,
                     "trolley_target_vel": target_trolley_vel,
                     "hoist_target_vel": target_hoist_vel,
                 },
             )
             cycle_number = state_dict["cycle_number"]
 
-            print(
-                f"IN MOVE AWAY FROM LIMITS: Cycle {cycle_number} Trolley position: {message['trolley_pos']}, limits: {self.trolley_min} - {self.trolley_max}, {self.hoist_min}-{self.hoist_max}"
-            )
+            if self._axis == "gantry":
+                print(
+                    f"IN MOVE AWAY FROM LIMITS: Cycle {cycle_number} Gantry position: {gantry_pos}, limits: {self.gantry_min} - {self.gantry_max}, hoist: {self.hoist_min}-{self.hoist_max}"
+                )
+            else:
+                print(
+                    f"IN MOVE AWAY FROM LIMITS: Cycle {cycle_number} Trolley position: {trolley_pos}, limits: {self.trolley_min} - {self.trolley_max}, {self.hoist_min}-{self.hoist_max}"
+                )
 
-            if self.trolley_min is None or self.trolley_max is None:
+            if self._axis == "gantry":
+                if self.gantry_min is None or self.gantry_max is None:
+                    gantry_ok = True
+                else:
+                    gantry_ok = (
+                        gantry_pos > self.gantry_min + 0.10
+                        and gantry_pos < self.gantry_max - 0.10
+                    )
                 trolley_ok = True
             else:
-                trolley_ok = (
-                    trolley_pos > self.trolley_min + 0.10
-                    and trolley_pos < self.trolley_max - 0.1
-                )
+                if self.trolley_min is None or self.trolley_max is None:
+                    trolley_ok = True
+                else:
+                    trolley_ok = (
+                        trolley_pos > self.trolley_min + 0.10
+                        and trolley_pos < self.trolley_max - 0.1
+                    )
+                gantry_ok = True
 
             if self.hoist_min is None or self.hoist_max is None:
                 hoist_ok = True
@@ -724,19 +880,30 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
                     and hoist_pos < self.hoist_max - 0.20
                 )
 
-            if trolley_ok and hoist_ok:
-                print("Trolley and hoist are ok, moving away from limits")
+            if trolley_ok and gantry_ok and hoist_ok:
+                print("Axis and hoist are ok, moving away from limits")
                 break
 
-            if (
-                not trolley_ok
-                and self.trolley_min is not None
-                and self.trolley_max is not None
-            ):
-                center = (self.trolley_min + self.trolley_max) / 2.0
-                target_trolley_vel = 0.268 if trolley_pos <= center else -0.268
+            if self._axis == "gantry":
+                if (
+                    not gantry_ok
+                    and self.gantry_min is not None
+                    and self.gantry_max is not None
+                ):
+                    center = (self.gantry_min + self.gantry_max) / 2.0
+                    target_gantry_vel = 1.0 if gantry_pos <= center else -1.0
+                else:
+                    target_gantry_vel = 0.0
             else:
-                target_trolley_vel = 0.0
+                if (
+                    not trolley_ok
+                    and self.trolley_min is not None
+                    and self.trolley_max is not None
+                ):
+                    center = (self.trolley_min + self.trolley_max) / 2.0
+                    target_trolley_vel = 0.268 if trolley_pos <= center else -0.268
+                else:
+                    target_trolley_vel = 0.0
 
             if (
                 not hoist_ok
@@ -750,7 +917,7 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
 
             self.action_socket.send_json(
                 {
-                    "gantry_target_vel": 0.0,
+                    "gantry_target_vel": target_gantry_vel,
                     "trolley_target_vel": target_trolley_vel,
                     "hoist_target_vel": target_hoist_vel,
                     "cycle_number": cycle_number,
