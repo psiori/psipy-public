@@ -75,10 +75,8 @@ class RLMetricsPlot:
 
         for i in range(len(avg_cost)):
             # Use current value and up to window_size preceding values
-            print(self.window_size)
             start = max(0, i - self.window_size + 1)
             end = i + 1
-            print(start, end)
             window_data = avg_cost[start:end]
 
             # Calculate mean and std for this window
