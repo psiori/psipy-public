@@ -34,10 +34,9 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 
 import numpy as np
 
-from psipy.core.io import MemoryZipFile, Saveable
 from psipy.core import IDMixin
-from psipy.rl.core.plant import Action, State
-from psipy.rl.core.plant import Numeric
+from psipy.core.io import MemoryZipFile, Saveable
+from psipy.rl.core.plant import Action, Numeric, State
 
 __all__ = [
     "ContinuousRandomActionController",
@@ -63,12 +62,14 @@ class Controller(IDMixin, Saveable, metaclass=ABCMeta):
         state_channels: Tuple[str, ...],
         action: Type[Action],
         action_channels: Optional[Tuple[str, ...]] = None,
+        lookback: Optional[int] = None,
         **kwargs,
     ):
         self.action_channels = action.channels
         if action_channels is not None:
             assert all(channel in action.channels for channel in action_channels)
             self.action_channels = action_channels
+        self.lookback = lookback
         super().__init__(
             state_channels=state_channels,
             action_channels=self.action_channels,
@@ -78,6 +79,7 @@ class Controller(IDMixin, Saveable, metaclass=ABCMeta):
             id=self.id,
             state_channels=state_channels,
             action_channels=self.action_channels,
+            lookback=self.lookback,
         )
         self.action_type = action
         self.state_channels = state_channels
@@ -92,8 +94,7 @@ class Controller(IDMixin, Saveable, metaclass=ABCMeta):
         return self._partial
 
     @abstractmethod
-    def notify_episode_starts(self) -> None:
-        ...
+    def notify_episode_starts(self) -> None: ...
 
     @abstractmethod
     def notify_episode_stops(self) -> None:
@@ -109,10 +110,10 @@ class Controller(IDMixin, Saveable, metaclass=ABCMeta):
         ...
 
     def get_default_basename(self) -> str:
-        return f"controller-{ self.id_strand }"
+        return f"controller-{self.id_strand}"
 
     def get_default_filename(self) -> str:
-        return f"controller-{ self.id }"
+        return f"controller-{self.id}"
 
     def _save(self, zip: MemoryZipFile) -> MemoryZipFile:
         return zip.add("config.json", self.get_config())

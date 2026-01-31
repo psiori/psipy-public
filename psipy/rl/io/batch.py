@@ -858,7 +858,7 @@ class Batch(KSequence):
         control: Optional[Controller] = None,
         only_newest: Optional[int] = None,
         override_mtime: bool = False,
-    ) -> "Batch":
+    ) -> "Batch | None":
         """Loads a series of SART hdf5 episode files to create a batch instance.
 
         Args:
@@ -894,7 +894,7 @@ class Batch(KSequence):
         # Create the batch and set the loaded SART paths
         
         if len(episodes) == 0:
-            LOG.warn("Not a single valid episode loaded from {} file(s).".format(len(files)))
+            LOG.warning("Not a single valid episode loaded from {} file(s).".format(len(files)))
             return None
         else:
             batch = cls(episodes, control=control, prioritization=prioritization)

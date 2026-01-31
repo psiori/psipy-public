@@ -257,16 +257,17 @@ class SARTWriter(StoppableThread):
         initial_time: Optional[datetime] = None,
         filenum: int = 1,
         buffer_size: int = 2000,
+        suffix: str = "",
     ):
         super().__init__(name="sart-writer", daemon=True)
         os.makedirs(filepath, exist_ok=True)
         if initial_time is not None:
             creation_time = datetime.now().strftime("%y%m%d-%H")
             initial = initial_time.strftime("%y%m%d-%H%M%S")
-            self.name = f"{name}-{initial}-{episode}-{filenum:02d}-{creation_time}.h5"
+            self.name = f"{name}-{initial}-{episode}-{filenum:02d}-{creation_time}{suffix}.h5"
         else:
             creation_time = datetime.now().strftime("%y%m%d-%H%M%S")
-            self.name = f"{name}-{creation_time}-{episode}-{filenum:02d}.h5"
+            self.name = f"{name}-{creation_time}-{episode}-{filenum:02d}{suffix}.h5"
         self.file = h5py.File(os.path.join(filepath, self.name), "a", libver="latest")
 
         self.file.attrs["task"] = name
@@ -422,6 +423,7 @@ class SARTLogger:
         initial_time: Optional[datetime] = None,
         rollover: Optional[str] = None,
         single: bool = False,
+        suffix: str = "",
     ):
         super().__init__()
         self.filepath = filepath
@@ -429,6 +431,7 @@ class SARTLogger:
         self.initial_time = initial_time
         self.rollover = rollover
         self.single = single
+        self.suffix = suffix
 
         self.file_count = 0
         self.episode_count = 0
@@ -447,6 +450,7 @@ class SARTLogger:
             self.episode_count - 1,
             self.initial_time,
             filenum=self.episode_file_count - 1,
+            suffix=self.suffix,
         )
 
     def get_now(self) -> int:
