@@ -36,7 +36,7 @@ class RLMetricsPlot:
             print("No figure or no filename to save metrics plot")
             return
         self.fig.tight_layout()
-        self.fig.savefig(filename, bbox_inches="tight", pad_inches=0.1)
+        self.fig.savefig(filename, dpi=1000, bbox_inches="tight", pad_inches=0.1)
 
     def _is_notebook(self):
         return (
@@ -48,7 +48,7 @@ class RLMetricsPlot:
             return
 
         if self.fig is None:
-            self.fig, self.ax = plt.subplots(figsize=(10, 8))
+            self.fig, self.ax = plt.subplots(figsize=(10, 4))
         elif not self._is_notebook():
             plt.figure(self.fig.number)
             if self.ax is None:
@@ -68,6 +68,11 @@ class RLMetricsPlot:
 
         # Calculate moving average and variance
         avg_cost = np.array(self.metrics["avg_cost"])
+
+        # # Clip to at most 110 points (show the last 110 if there are more)
+        # max_points = 110
+        # if len(avg_cost) > max_points:
+        #     avg_cost = avg_cost[-max_points:]
 
         # Use current value and n preceding values (or all preceding if fewer than n)
         moving_avg = np.zeros_like(avg_cost)
@@ -107,6 +112,7 @@ class RLMetricsPlot:
         # self.ax.set_title("Durchschnittskosten")
         self.ax.set_ylabel("Kosten pro Zeitschritt")
         self.ax.set_xlabel("Episoden")
+        # self.ax.set_yscale("log")
         self.ax.legend()
 
         if self._is_notebook():
