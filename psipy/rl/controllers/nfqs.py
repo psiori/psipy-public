@@ -3,6 +3,10 @@
 #
 # Copyright (C) PSIORI GmbH, Germany
 # Proprietary and confidential, all rights reserved.
+#
+# Author: Alexander Höreth (2020)
+#
+
 
 """Single Output Neural Fitted Q-Iteration
 ==========================================
@@ -352,6 +356,7 @@ class NFQs(Controller):
             control_pairs=control_pairs,
             doubleq=doubleq,
             disable_terminals=disable_terminals,
+            num_repeat=num_repeat,
             **kwargs,
         )
         self.disable_terminals = disable_terminals
@@ -482,16 +487,31 @@ class NFQs(Controller):
             ).ravel()  # TODO (AH/SL): not 100% sure why this is needed after switch to multi-dimensional actions.
             actions = self.action_values[action_indices]  # shape (N, ACT_DIM)
             if self._action_indices is not None:
-                meta = dict(index=self._action_indices[action_indices], nodoe=actions)
+                meta = dict(
+                    index=self._action_indices[action_indices],
+                    nodoe=actions,
+                    is_random=np.ones((stacks.shape[0], actions.shape[1]), dtype=bool),
+                )
             else:
-                meta = dict(nodoe=actions)
+                meta = dict(
+                    nodoe=actions,
+                    is_random=np.ones((stacks.shape[0], actions.shape[1]), dtype=bool),
+                )
 
             # TODO: Not sure why this is wanted
             # Randomly alter how long actions are held
-            self.action_repeat_count = random.randint(1, self.action_repeat_max)
+            if self.action_repeat_max >= 1:
+                self.action_repeat_count = random.randint(1, self.action_repeat_max)
+            else:
+                self.action_repeat_count = 0
             self._prev_raw_act_and_meta = (actions, meta)
         else:  # Choose best action
             stacks = self.preprocess_observations(stacks)
+            # Handle both dictionary and numpy array returns from preprocess_observations
+            if isinstance(stacks, dict):
+                stacks_batch_size = len(next(iter(stacks.values())))
+            else:
+                stacks_batch_size = stacks.shape[0]
             stacks = make_state_action_pairs(stacks, self.action_values_normalized)
 
             with CM["get-actions-predict"]:
@@ -500,9 +520,20 @@ class NFQs(Controller):
             action_indices = action_indices.astype(np.int32).ravel()
             actions = self.action_values[action_indices]  # shape (N, ACT_DIM)
             if self._action_indices is not None:
-                meta = dict(index=self._action_indices[action_indices], nodoe=actions)
+                meta = dict(
+                    index=self._action_indices[action_indices],
+                    nodoe=actions,
+                    is_random=np.zeros(
+                        (stacks_batch_size, actions.shape[1]), dtype=bool
+                    ),
+                )
             else:
-                meta = dict(nodoe=actions)
+                meta = dict(
+                    nodoe=actions,
+                    is_random=np.zeros(
+                        (stacks_batch_size, actions.shape[1]), dtype=bool
+                    ),
+                )
             self.action_repeat_count = 1
             self._prev_raw_act_and_meta = (actions, meta)
         if self.idoe:
@@ -531,7 +562,9 @@ class NFQs(Controller):
         )
         LOG.info(f"CONFIG AFTER NEW ACTION VALUES {self._config}")
 
-    def preprocess_observations(self, stacks: np.ndarray) -> np.ndarray:
+    def preprocess_observations(
+        self, stacks: np.ndarray
+    ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         """Preprocesses observation stacks before those are passed to the network.
 
         Employed in both the local :meth:`get_actions` method as well as in the
@@ -539,6 +572,11 @@ class NFQs(Controller):
 
         Args:
           stacks: Observation stacks of shape ``(BATCH, CHANNELS, LOOKBACK)``.
+
+        Returns:
+          Preprocessed stacks as numpy array or dictionary of numpy arrays.
+          Subclasses may override to return dictionaries for models with
+          multiple inputs.
         """
         channels = self.state_channels
         if self.control_pairs is not None:
@@ -765,9 +803,7 @@ class NFQs(Controller):
         action_type = cls.load_action_type(action_meta, custom_objects)
         obj = cls(model=model, action=action_type, **config)
         obj.normalizer = StackNormalizer.load(zipfile)
-        LOG.info(
-            f"NFQs._load loaded normalizer with configuration: {obj.normalizer.get_config()}"
-        )
+        LOG.info(f"NFQs._load normalizer: {obj.normalizer.get_config()}")
         try:
             obj.action_normalizer = StackNormalizer.load(zipfile, "action_normalizer")
             LOG.info(

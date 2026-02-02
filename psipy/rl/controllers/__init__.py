@@ -3,6 +3,9 @@
 #
 # Copyright (C) PSIORI GmbH, Germany
 # Proprietary and confidential, all rights reserved.
+#
+# Author: Alexander Höreth (2019)
+#
 
 """PSIPY RL Controllers
 ====================================================
@@ -173,7 +176,6 @@ is a mean reverting brownian motion.  Here, the epsilon greedy strategy would al
 be used, but instead of randomly sampling, the noise is added.
 
 """
-
 
 from psipy.rl.core.controller import ContinuousRandomActionController
 from psipy.rl.core.controller import Controller, DiscreteRandomActionController

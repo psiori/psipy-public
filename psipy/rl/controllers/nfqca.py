@@ -3,6 +3,9 @@
 #
 # Copyright (C) PSIORI GmbH, Germany
 # Proprietary and confidential, all rights reserved.
+#
+# Author: Alexander Höreth (2019)
+#
 
 """Neural Fitted Q-Iteration with Continuous Actions
 ====================================================

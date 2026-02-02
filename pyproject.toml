@@ -1,0 +1,86 @@
+[build-system]
+requires = ["setuptools>=70.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "psipy"
+description = "Public part of PSIORI's internal ML-library 'psipy'"
+readme = "README.md"
+license = { text = "Proprietary" }
+authors = [
+    { name = "PSIORI Developers", email = "info@psiori.com" },
+]
+dynamic = ["version"]
+dependencies = [
+    "azure-storage-blob",
+    "dynaconf",
+    "h5py~=3.11.0",
+    "keras~=3.11.3",
+    "matplotlib",
+    "numpy",
+    "pandas",
+    "plotly",
+    "psutil",
+    "pygame",
+    "pyglet",
+    "pyserial",
+    "python-dotenv",
+    "pyzmq",
+    "scikit-learn",
+    "scipy",
+    "swig",
+    "tensorflow-probability[tf]~=0.25.0",
+    "tensorflow~=2.18.1",
+    "tqdm",
+    "xxhash",
+]
+
+[project.optional-dependencies]
+dev = [
+    "flake8",
+    "flake8-bugbear",
+    "flaky",
+    "isort",
+    "jupyter",
+    "mypy",
+    "pre-commit",
+    "pytest",
+    "pytest-cov",
+    "recommonmark",
+    "Sphinx",
+    "sphinx-autodoc-typehints",
+    "sphinx_rtd_theme",
+]
+
+[project.scripts]
+tui = "psipy.rl.io.terminal_interface:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.setuptools.dynamic]
+version = { attr = "psipy.__version__.__version__" }
+
+[tool.pytest.ini_options]
+addopts = [
+    "--cov=psipy",
+    "--cov-config=setup.cfg",
+    "--cov-report=term-missing",
+    "--cov-report=xml:dist/tests/cobertura-coverage.xml",
+    "--cov-report=html:dist/tests/coverage_html",
+    "--doctest-modules",
+    "--durations=0",
+    "--junitxml=dist/tests/junit.xml",
+    "--pyargs",
+    "psipy/",
+    "--strict",
+    "-rw",
+]
+doctest_optionflags = ["NORMALIZE_WHITESPACE", "IGNORE_EXCEPTION_DETAIL"]
+faulthandler_timeout = 60
+filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+norecursedirs = ["bin", "docs", "examples", "gallery", "tools", "*.egg-info", ".eggs", ".ipynb_checkpoints", "deprecated", "data"]
+testpaths = ["psipy"]
