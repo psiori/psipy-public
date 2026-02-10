@@ -440,7 +440,6 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
 
         # update limits
 
-
         gantry_buffer = 1.5
         self.gantry_min = float(message["gantry_pos_min"]) + gantry_buffer
         self.gantry_max = float(message["gantry_pos_max"]) - gantry_buffer

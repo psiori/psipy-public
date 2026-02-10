@@ -724,6 +724,7 @@ class NFQs(Controller):
         lookback: int = 1,
         hidden_dim: int = 256,
         feature_dim: int = 100,
+        hidden_layers: int = 2,
     ) -> tf.keras.Model:
         """Create a default model.
 
@@ -731,13 +732,16 @@ class NFQs(Controller):
             state_dim: Dimension of the state.
             action_dim: Dimension of the action.
             lookback: Number of history steps from the state to feed into the actor.
+            hidden_layers: Number of hidden layers, excluding the feature layer.
+            hidden_dim: Number of neurons in each hidden layer.
+            feature_dim: Number of neurons in the feature layer.
         """
         inp = tfkl.Input((state_dim, lookback), name="states")
         act = tfkl.Input((action_dim,), name="actions")
         net = tfkl.Flatten()(inp)
         net = tfkl.concatenate([act, net])
-        net = tfkl.Dense(hidden_dim, activation="relu")(net)
-        net = tfkl.Dense(hidden_dim, activation="relu")(net)
+        for _ in range(hidden_layers):
+            net = tfkl.Dense(hidden_dim, activation="relu")(net)
         net = tfkl.Dense(feature_dim, activation="tanh")(net)
         net = tfkl.Dense(1, activation="sigmoid")(net)
         model = tf.keras.Model([inp, act], net, name="nfqsmodel")

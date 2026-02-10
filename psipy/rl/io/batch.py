@@ -189,6 +189,8 @@ class Episode:
         """String axes within an array (such as action addtl data), are removed."""
         deletable = []
         arr = arr.T
+        if arr.size == 0:
+            return arr
         for axis in range(len(arr)):
             if isinstance(arr[axis][0], str):
                 deletable.append(axis)
@@ -885,7 +887,7 @@ class Batch(KSequence):
                     state_channels=state_channels,
                     action_channels=action_channels,
                 )
-            except (KeyError, OSError) as e:
+            except (KeyError, OSError, IndexError, ValueError) as e:
                 LOG.warning(f"{e} in file {hdf5_file}")
                 continue
             if eps.is_valid() and len(eps) > 0:
@@ -927,7 +929,7 @@ class Batch(KSequence):
                     state_channels=state_channels,
                     action_channels=action_channels,
                 )
-            except (KeyError, OSError) as e:
+            except (KeyError, OSError, IndexError, ValueError) as e:
                 LOG.warning(f"{e} in file {hdf5_file}")
                 continue
             if eps.is_valid():
