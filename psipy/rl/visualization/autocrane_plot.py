@@ -167,16 +167,17 @@ class AutocraneTrolleyTrajectoryPlot:
         self.fig.suptitle(title)
    
     
-        if self._is_notebook():
-            self.fig.canvas.draw()
-        else:
-            # This is what makes it live
-            # If you get
-            #   AttributeError: type object 'FigureCanvasBase'
-            #     has no attribute 'start_event_loop_default'
-            # you are in a notebook and either you did not set
-            # 'in_notebook' to True, or it wasn't detected correctly.
-            plt.pause(0.01)      
+        if self.do_display:
+            if self._is_notebook():
+                self.fig.canvas.draw()
+            else:
+                # This is what makes it live
+                # If you get
+                #   AttributeError: type object 'FigureCanvasBase'
+                #     has no attribute 'start_event_loop_default'
+                # you are in a notebook and either you did not set
+                # 'in_notebook' to True, or it wasn't detected correctly.
+                plt.pause(0.01)      
 
         self.dirty = False
 
