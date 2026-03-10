@@ -74,13 +74,15 @@ class ExtendedAutocraneTrolleyAction(AutocraneAction):
 class AutocraneGantryAction(AutocraneAction):
     dtype = "discrete"
     channels = ("gantry_target_vel",)
+    # speed_max_possible, 0
     legal_values = ((-1.0, 0.0, 1.0),)
 
 
 class ExtendedAutocraneGantryAction(AutocraneAction):
     dtype = "discrete"
     channels = ("gantry_target_vel",)
-    legal_values = ((-1.0, -0.5, 0.0, 0.5, 1.0),)
+    # speed_max_possible, speed_non_zero_min, 0
+    legal_values = ((-1.0, -0.3, 0.0, 0.3, 1.0),)
 
 
 class AutocraneTrolleyHoistAction(AutocraneAction):
