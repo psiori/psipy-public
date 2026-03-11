@@ -85,6 +85,64 @@ class ExtendedAutocraneGantryAction(AutocraneAction):
     legal_values = ((-1.0, -0.3, 0.0, 0.3, 1.0),)
 
 
+# Portal crane: hardcoded action ranges (gantry [0.01, 0.665], trolley [0.01, 0.366])
+class PortalGantryAction(AutocraneAction):
+    dtype = "discrete"
+    channels = ("gantry_target_vel",)
+    legal_values = ((-0.665, 0.0, 0.665),)
+    default_values = (0.0,)
+
+
+class PortalExtendedGantryAction(AutocraneAction):
+    dtype = "discrete"
+    channels = ("gantry_target_vel",)
+    legal_values = ((-0.665, -0.01, 0.0, 0.01, 0.665),)
+    default_values = (0.0,)
+
+
+class PortalTrolleyAction(AutocraneAction):
+    dtype = "discrete"
+    channels = ("trolley_target_vel",)
+    legal_values = ((-0.366, 0.0, 0.366),)
+    default_values = (0.0,)
+
+
+class PortalExtendedTrolleyAction(AutocraneAction):
+    dtype = "discrete"
+    channels = ("trolley_target_vel",)
+    legal_values = ((-0.366, -0.01, 0.0, 0.01, 0.366),)
+    default_values = (0.0,)
+
+
+# Minicrane: hardcoded action ranges (gantry [0.298, 1.007], trolley [0.029, 0.268])
+class MinicraneGantryAction(AutocraneAction):
+    dtype = "discrete"
+    channels = ("gantry_target_vel",)
+    legal_values = ((-1.007, 0.0, 1.007),)
+    default_values = (0.0,)
+
+
+class MinicraneExtendedGantryAction(AutocraneAction):
+    dtype = "discrete"
+    channels = ("gantry_target_vel",)
+    legal_values = ((-1.007, -0.298, 0.0, 0.298, 1.007),)
+    default_values = (0.0,)
+
+
+class MinicraneTrolleyAction(AutocraneAction):
+    dtype = "discrete"
+    channels = ("trolley_target_vel",)
+    legal_values = ((-0.268, 0.0, 0.268),)
+    default_values = (0.0,)
+
+
+class MinicraneExtendedTrolleyAction(AutocraneAction):
+    dtype = "discrete"
+    channels = ("trolley_target_vel",)
+    legal_values = ((-0.268, -0.029, 0.0, 0.029, 0.268),)
+    default_values = (0.0,)
+
+
 class AutocraneTrolleyHoistAction(AutocraneAction):
     dtype = "discrete"
     channels = (
