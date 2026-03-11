@@ -217,9 +217,8 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         action_type: Optional[AutocraneAction] = None,
         axis: Literal["trolley", "gantry"] = "trolley",
         sway_terminal_margin: float = 0.3,
-        good_terminal_sway_margin: float = 0.02,
-        good_terminal_distance_margin: float = 0.05,
         good_terminal_consecutive_steps: int = 10,
+        good_terminal_cost_threshold: float = 0.0,
         **kwargs,
     ):
         """
@@ -231,9 +230,8 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
             randomize_set_points (bool): Whether to randomize set points.
             axis (str): Which axis to control: "trolley" or "gantry" (default: "trolley").
             sway_terminal_margin (float): Sway threshold for bad terminal state (default: 0.3).
-            good_terminal_sway_margin (float): Maximum sway angle for good terminal state (default: 0.02).
-            good_terminal_distance_margin (float): Maximum distance to setpoint for good terminal state (default: 0.05).
-            good_terminal_consecutive_steps (int): Number of consecutive steps within margins to trigger good terminal (default: 10).
+            good_terminal_consecutive_steps (int): Number of consecutive steps with cost below threshold to trigger good terminal (default: 10).
+            good_terminal_cost_threshold (float): Cost threshold below which a step counts toward good terminal; episode ends (good terminal) after n consecutive such steps (default: 0.02). Requires cost_function to be set.
         """
         self.hoist_active = hoist_active
         self._axis = axis
@@ -275,9 +273,8 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
 
         # Terminal state margins
         self._sway_terminal_margin = sway_terminal_margin
-        self._good_terminal_sway_margin = good_terminal_sway_margin
-        self._good_terminal_distance_margin = good_terminal_distance_margin
         self._good_terminal_consecutive_steps = good_terminal_consecutive_steps
+        self._good_terminal_cost_threshold = good_terminal_cost_threshold
         self._consecutive_good_steps = 0
         self._is_good_terminal = False
 
@@ -656,8 +653,6 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         new_state = AutocraneState(state_dict)
 
         # Check for bad terminal states (limits and excessive sway)
-        bad_terminal = False
-
         if self._axis == "gantry":
             if gantry_pos <= self.gantry_min or gantry_pos >= self.gantry_max:
                 print(
@@ -669,14 +664,12 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
                     self.gantry_max,
                 )
                 new_state.terminal = True
-                bad_terminal = True
 
         if self._axis == "trolley" and (
             trolley_pos <= self.trolley_min or trolley_pos >= self.trolley_max
         ):
             print("ZMQProxy: Trolley limit reached. Terminal state.")
             new_state.terminal = True
-            bad_terminal = True
 
         if hoist_pos <= self.hoist_min or hoist_pos >= self.hoist_max:
             print(
@@ -688,7 +681,6 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
                 self.hoist_max,
             )
             new_state.terminal = True
-            bad_terminal = True
 
         # sway limit (use axis-appropriate sway channel)
         sway_trolley = abs(state_dict["grapple_sway_trolley"])
@@ -705,37 +697,6 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
                 state_dict[sway_key],
             )
             new_state.terminal = True
-            bad_terminal = True
-
-        # Check for good terminal state (within margins for consecutive steps)
-        if self._axis == "gantry":
-            set_point_ok = self._gantry_set_point is not None
-            position_delta = abs(state_dict["gantry_set_point_delta"])
-        else:
-            set_point_ok = self._trolley_set_point is not None
-            position_delta = abs(state_dict["trolley_set_point_delta"])
-
-        if not bad_terminal and set_point_ok:
-            within_distance = position_delta <= self._good_terminal_distance_margin
-            within_sway = sway <= self._good_terminal_sway_margin
-
-            if within_distance and within_sway:
-                self._consecutive_good_steps += 1
-                if (
-                    self._consecutive_good_steps
-                    >= self._good_terminal_consecutive_steps
-                ):
-                    print(
-                        f"ZMQProxy: Good terminal state reached. Within margins for {self._consecutive_good_steps} steps. Distance: {position_delta:.4f}, Sway: {sway:.4f}"
-                    )
-                    new_state.terminal = True
-                    self._is_good_terminal = True
-            else:
-                self._consecutive_good_steps = 0
-                self._is_good_terminal = False
-        else:
-            self._consecutive_good_steps = 0
-            self._is_good_terminal = False
 
         return new_state
 
@@ -806,19 +767,38 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         self, state: AutocraneState, action: AutocraneAction
     ) -> AutocraneState:
         """
-        Override to ensure terminal states have correct costs:
+        Override to apply cost-based good terminal and ensure terminal states have correct costs:
+        - Good terminal: cost below threshold for n consecutive steps (then cost = 0.0).
         - Bad terminal states (limits, excessive sway): cost = 1.0
-        - Good terminal states (within margins): cost = 0.0
         """
         new_state = super().get_next_state(state, action)
+
+        # Cost-based good terminal: if cost function is set and state is not already terminal
+        if (
+            not new_state.terminal
+            and hasattr(self, "_cost_function")
+            and self._cost_function is not None
+        ):
+            if new_state.cost < self._good_terminal_cost_threshold:
+                self._consecutive_good_steps += 1
+                if (
+                    self._consecutive_good_steps
+                    >= self._good_terminal_consecutive_steps
+                ):
+                    print(
+                        f"ZMQProxy: Good terminal reached. Cost below threshold ({self._good_terminal_cost_threshold}) for {self._consecutive_good_steps} steps. Cost: {new_state.cost:.4f}"
+                    )
+                    new_state.terminal = True
+                    self._is_good_terminal = True
+            else:
+                self._consecutive_good_steps = 0
+                self._is_good_terminal = False
 
         # Override cost for terminal states
         if new_state.terminal:
             if self._is_good_terminal:
-                # Good terminal: cost = 0.0
                 new_state.cost = 0.0
             else:
-                # Bad terminal: cost = 1.0
                 new_state.cost = 1.0
 
         return new_state
