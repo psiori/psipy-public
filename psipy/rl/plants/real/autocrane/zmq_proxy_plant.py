@@ -893,9 +893,9 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         """
         if self._current_state is None:
             return
-        if self._axis == "gantry":
+        if self._axis == "gantry" and self.set_point_gantry is None:
             self.set_point_gantry = self._current_state["gantry_pos"]
-        else:
+        elif self._axis == "trolley" and self.set_point_trolley is None:
             self.set_point_trolley = self._current_state["trolley_pos"]
 
     def check_initial_state(self, state: Optional[AutocraneState]) -> AutocraneState:
