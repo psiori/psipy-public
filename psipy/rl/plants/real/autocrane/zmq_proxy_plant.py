@@ -365,7 +365,7 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
             and self.gantry_min is not None
             and self.gantry_max is not None
         ):
-            gantry_buffer = 0.6
+            gantry_buffer = 2.6
             gantry_center = (self.gantry_min + self.gantry_max) / 2.0
             gantry_low = self.gantry_min + gantry_buffer
             gantry_high = self.gantry_max - gantry_buffer
