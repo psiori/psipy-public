@@ -213,6 +213,7 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         action_pub_address: str = "tcp://192.168.50.25:7556",
         randomize_set_points: bool = True,
         alternating_set_points: bool = False,
+        fixed_set_point: bool = False,
         alternating_trolley_positions: Optional[list[str]] = None,
         alternating_hoist_positions: Optional[list[str]] = None,
         alternating_gantry_positions: Optional[list[str]] = None,
@@ -231,6 +232,8 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
             state_sub_address (str): The address of the ZMQ subscriber socket for receiving states.
             action_pub_address (str): The address of the ZMQ publisher socket for sending actions.
             randomize_set_points (bool): Whether to randomize set points.
+            alternating_set_points (bool): Whether to cycle set points.
+            fixed_set_point (bool): Whether to use a fixed set point.
             axis (str): Which axis to control: "trolley" or "gantry" (default: "trolley").
             sway_terminal_margin (float): Sway threshold for bad terminal state (default: 0.3).
             good_terminal_consecutive_steps (int): Number of consecutive steps with cost below threshold to trigger good terminal (default: 10).
@@ -265,6 +268,9 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         self._randomize_set_points = randomize_set_points
         self._alternating_set_points = (
             alternating_set_points and not randomize_set_points
+        )
+        self._fixed_set_point = (
+            fixed_set_point and not randomize_set_points and not alternating_set_points
         )
         # Per-dimension option lists (initialized lazily in set_alternating_set_point)
         self._alternating_trolley_options: list[float] | None = None
@@ -881,6 +887,17 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
 
         return new_state
 
+    def set_fixed_set_point(self):
+        """
+        Sets the fixed set point for the controlled axis (trolley or gantry).
+        """
+        if self._current_state is None:
+            return
+        if self._axis == "gantry":
+            self.set_point_gantry = self._current_state["gantry_pos"]
+        else:
+            self.set_point_trolley = self._current_state["trolley_pos"]
+
     def check_initial_state(self, state: Optional[AutocraneState]) -> AutocraneState:
         """
         Checks the initial state of the Autocrane system. Extracts the limits, selects the very first random set point, if this feature is enabled and
@@ -897,11 +914,15 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
                 self.set_random_set_point()
             if self._gantry_set_point is None and self._alternating_set_points:
                 self.set_alternating_set_point()
+            if self._gantry_set_point is None and self._fixed_set_point:
+                self.set_fixed_set_point()
         else:
             if self._trolley_set_point is None and self._randomize_set_points:
                 self.set_random_set_point()
             if self._trolley_set_point is None and self._alternating_set_points:
                 self.set_alternating_set_point()
+            if self._trolley_set_point is None and self._fixed_set_point:
+                self.set_fixed_set_point()
 
         # Create the initial state
         initial_state = self._process_and_update_from(
@@ -928,9 +949,10 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
 
         if self._randomize_set_points:
             self.set_random_set_point()
-
         elif self._alternating_set_points:
             self.set_alternating_set_point()
+        elif self._fixed_set_point:
+            self.set_fixed_set_point()
 
         self.move_away_from_limits()
         return True
