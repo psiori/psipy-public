@@ -213,6 +213,9 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         action_pub_address: str = "tcp://192.168.50.25:7556",
         randomize_set_points: bool = True,
         alternating_set_points: bool = False,
+        alternating_trolley_positions: Optional[list[str]] = None,
+        alternating_hoist_positions: Optional[list[str]] = None,
+        alternating_gantry_positions: Optional[list[str]] = None,
         hoist_active: bool = False,
         action_type: Optional[AutocraneAction] = None,
         axis: Literal["trolley", "gantry"] = "trolley",
@@ -232,8 +235,14 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
             sway_terminal_margin (float): Sway threshold for bad terminal state (default: 0.3).
             good_terminal_consecutive_steps (int): Number of consecutive steps with cost below threshold to trigger good terminal (default: 10).
             good_terminal_cost_threshold (float): Cost threshold below which a step counts toward good terminal; episode ends (good terminal) after n consecutive such steps (default: 0.02). Requires cost_function to be set.
+            alternating_trolley_positions (list[str] | None): For alternating set points, which positions to cycle for trolley: ["low", "mid", "high"]. If None, uses default 5-step pattern.
+            alternating_hoist_positions (list[str] | None): Same for hoist. If None, uses default 5-step pattern.
+            alternating_gantry_positions (list[str] | None): Same for gantry (when axis is gantry). If None, uses default 5-step pattern.
         """
         self.hoist_active = hoist_active
+        self._config_alternating_trolley = alternating_trolley_positions
+        self._config_alternating_hoist = alternating_hoist_positions
+        self._config_alternating_gantry = alternating_gantry_positions
         self._axis = axis
 
         super().__init__(**kwargs)
@@ -257,7 +266,14 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         self._alternating_set_points = (
             alternating_set_points and not randomize_set_points
         )
-        self.next_option = 0
+        # Per-dimension option lists (initialized lazily in set_alternating_set_point)
+        self._alternating_trolley_options: list[float] | None = None
+        self._alternating_hoist_options: list[float] | None = None
+        self._alternating_gantry_options: list[float] | None = None
+        # Per-dimension cycle indices
+        self._next_trolley_option = 0
+        self._next_hoist_option = 0
+        self._next_gantry_option = 0
         self.gantry_min: float | None = None
         self.gantry_max: float | None = None
         self.trolley_min: float | None = None
@@ -323,70 +339,132 @@ class AutocraneZMQProxyPlant(Plant[AutocraneState, AutocraneAction]):
         print(f"Setting gantry set point to {position}")
         self._gantry_set_point = position
 
+    @staticmethod
+    def _options_from_position_names(
+        position_names: list[str], low: float, mid: float, high: float
+    ) -> list[float]:
+        """Build option list from position names ('low', 'mid', 'high') and values."""
+        mapping = {"low": low, "mid": mid, "high": high}
+        for name in position_names:
+            if name not in mapping:
+                raise ValueError(
+                    f"alternating position must be one of 'low', 'mid', 'high'; got {name!r}"
+                )
+        return [mapping[name] for name in position_names]
+
     def set_alternating_set_point(self):
         """
-        Sets the set point for the controlled axis (trolley or gantry) to the alternating set point.
+        Sets the set point for the controlled axis (trolley or gantry) to the next
+        value in the per-dimension option cycles. Option lists are initialized from
+        limits on first use (or from config alternating_*_positions if set), then
+        each dimension cycles independently.
         """
-        if self._axis == "gantry":
-            if self.gantry_min is None or self.gantry_max is None:
-                return
+        # Will only be done once, once the limits are set
+        if (
+            self._alternating_gantry_options is None
+            and self.gantry_min is not None
+            and self.gantry_max is not None
+        ):
             gantry_buffer = 0.6
             gantry_center = (self.gantry_min + self.gantry_max) / 2.0
-            hoist_low = (self.hoist_min + 0.4) if self.hoist_min is not None else 0.0
-            hoist_high = (self.hoist_max - 0.4) if self.hoist_max is not None else 0.0
-            hoist_mid = (
-                ((self.hoist_min + self.hoist_max) / 2.0)
-                if (self.hoist_min is not None and self.hoist_max is not None)
-                else 0.0
+            gantry_low = self.gantry_min + gantry_buffer
+            gantry_high = self.gantry_max - gantry_buffer
+            if self._config_alternating_gantry is not None:
+                self._alternating_gantry_options = self._options_from_position_names(
+                    self._config_alternating_gantry,
+                    gantry_low,
+                    gantry_center,
+                    gantry_high,
+                )
+            else:
+                self._alternating_gantry_options = [
+                    gantry_low,
+                    gantry_low,
+                    gantry_center,
+                    gantry_high,
+                    gantry_high,
+                ]
+        if (
+            self._alternating_hoist_options is None
+            and self.hoist_min is not None
+            and self.hoist_max is not None
+        ):
+            hoist_low = self.hoist_min + 0.4
+            hoist_high = self.hoist_max - 0.4
+            hoist_mid = (self.hoist_min + self.hoist_max) / 2.0
+            if self._config_alternating_hoist is not None:
+                self._alternating_hoist_options = self._options_from_position_names(
+                    self._config_alternating_hoist,
+                    hoist_low,
+                    hoist_mid,
+                    hoist_high,
+                )
+            else:
+                self._alternating_hoist_options = [
+                    hoist_low,
+                    hoist_low,
+                    hoist_mid,
+                    hoist_high,
+                    hoist_high,
+                ]
+        if (
+            self._alternating_trolley_options is None
+            and self.trolley_min is not None
+            and self.trolley_max is not None
+        ):
+            trolley_buffer = 0.6
+            trolley_center = (self.trolley_min + self.trolley_max) / 2.0
+            trolley_low = self.trolley_min + trolley_buffer
+            trolley_high = self.trolley_max - trolley_buffer
+            if self._config_alternating_trolley is not None:
+                self._alternating_trolley_options = self._options_from_position_names(
+                    self._config_alternating_trolley,
+                    trolley_low,
+                    trolley_center,
+                    trolley_high,
+                )
+            else:
+                self._alternating_trolley_options = [
+                    trolley_low,
+                    trolley_low,
+                    trolley_center,
+                    trolley_high,
+                    trolley_high,
+                ]
+
+        if self.hoist_active and self._alternating_hoist_options is not None:
+            self.set_point_hoist = self._alternating_hoist_options[
+                self._next_hoist_option
+            ]
+            self._next_hoist_option = (self._next_hoist_option + 1) % len(
+                self._alternating_hoist_options
             )
-            options = (
-                (self.gantry_min + gantry_buffer, hoist_low),
-                (self.gantry_max - gantry_buffer, hoist_low),
-                (gantry_center, hoist_mid),
-                (self.gantry_min + gantry_buffer, hoist_high),
-                (self.gantry_max - gantry_buffer, hoist_high),
+
+        if self._axis == "gantry":
+            if self._alternating_gantry_options is None:
+                return
+            self.set_point_gantry = self._alternating_gantry_options[
+                self._next_gantry_option
+            ]
+            self._next_gantry_option = (self._next_gantry_option + 1) % len(
+                self._alternating_gantry_options
             )
-            self.set_point_gantry = options[self.next_option][0]
-            if (
-                self.hoist_active
-                and self.hoist_min is not None
-                and self.hoist_max is not None
-            ):
-                self.set_point_hoist = options[self.next_option][1]
-            self.next_option = (self.next_option + 1) % len(options)
+
             print(
                 f"Setting alternating set points to gantry={self.set_point_gantry}, hoist={getattr(self, '_hoist_set_point', None)}"
             )
-            return
-
-        if (
-            self.hoist_min is None
-            or self.hoist_max is None
-            or self.trolley_min is None
-            or self.trolley_max is None
-        ):
-            return
-
-        options = (
-            (self.trolley_min + 0.6, self.hoist_min + 0.4),
-            (self.trolley_max - 0.6, self.hoist_min + 0.4),
-            (
-                (self.trolley_min + self.trolley_max) / 2.0,
-                (self.hoist_min + self.hoist_max) / 2.0,
-            ),  # point in the center of the Z or X-shaped movement / cross of the X
-            (self.trolley_min + 0.6, self.hoist_max - 0.4),
-            (self.trolley_max - 0.6, self.hoist_max - 0.4),
-        )
-        self.set_point_trolley = options[self.next_option][0]
-
-        if self.hoist_active:
-            self.set_point_hoist = options[self.next_option][1]
-
-        self.next_option = (self.next_option + 1) % len(options)
-
-        print(
-            f"Setting alternating set points to {self.set_point_trolley}, {self.set_point_hoist}"
-        )
+        else:  # Trolley axis
+            if self._alternating_trolley_options is None:
+                return
+            self.set_point_trolley = self._alternating_trolley_options[
+                self._next_trolley_option
+            ]
+            self._next_trolley_option = (self._next_trolley_option + 1) % len(
+                self._alternating_trolley_options
+            )
+            print(
+                f"Setting alternating set points to {self.set_point_trolley}, {self.set_point_hoist}"
+            )
 
     def set_random_set_point(self):
         """
